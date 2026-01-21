@@ -1,0 +1,18 @@
+{
+    "obs": true,
+    "R_h_group": 1.0,
+    "V_vir_group": 3.0,
+    "R_h_iso": 2.0,
+    "V_vir_iso": 3.0,
+    "vel_cut": true,
+    "tree_search": false,
+    "sat_reclass": true,
+    "iso_reclass": true,
+    "contrast": true,
+    "box_size": null,
+    "R_max": 50.0,
+    "periodic": false,
+    "B_scaling": 0.25245648323565056,
+    "h": 0.6774,
+    "dim": 3
+}
