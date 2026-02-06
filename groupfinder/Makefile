@@ -30,14 +30,14 @@ sim: run_groupfinder_sim
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-# Build executables in build directory
+# Executable build rules
 run_groupfinder_obs: $(BUILD_DIR) $(BUILD_DIR)/run_groupfinder_obs.o $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -o $(BUILD_DIR)/$@ $(BUILD_DIR)/run_groupfinder_obs.o $(OBJECTS) $(HDF5_LDFLAGS)
 
 run_groupfinder_sim: $(BUILD_DIR) $(BUILD_DIR)/run_groupfinder_sim.o $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -o $(BUILD_DIR)/$@ $(BUILD_DIR)/run_groupfinder_sim.o $(OBJECTS) $(HDF5_LDFLAGS)
 
-# Build object files
+# Object file build rules
 $(BUILD_DIR)/%.o: %.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -c $< -o $@
 

@@ -19,13 +19,17 @@
 namespace gf {
 
 static inline double wrap(double x, double L) {
-    // Wraps a value x to be within the bounds [-L/2, L/2]
-    // x may be an absolute or a relative distance
+    /** 
+     * @brief Wraps a value x to be within the bounds [-L/2, L/2],
+     * where x may be an absolute or a relative distance
+     */
     return x - L * std::round(x / L);
 }
 
 static inline Vec3 minimal(const Vec3& a,const Vec3& b,double L) {
-    // Compute the minimal image distance vector between two points in a periodic box
+    /**
+     * @brief Compute the minimal image distance vector between two points in a periodic box
+     */
     return {
         wrap(a[0]-b[0],L),wrap(a[1]-b[1],L),wrap(a[2]-b[2],L)
     };
@@ -52,8 +56,10 @@ static inline double interp_lin(double x,
     return (1.0 - t) * y_arr[i] + t * y_arr[j];
 }
 
-// Secant root-finding method for inverting Behroozi SMHM relation
 static double find_root(double x0, double x1, double current_mass, const BehrooziParams& params, double tolerance = 1e-9, int max_iter = 100) {
+    /**
+     * @brief Secant root-finding method for inverting Behroozi SMHM relation
+     */
     double f_x0 = behroozi_SMHM(x0, current_mass, params);
     double f_x1 = behroozi_SMHM(x1, current_mass, params);
 
@@ -86,8 +92,10 @@ static double find_root(double x0, double x1, double current_mass, const Behrooz
     return x1;
 }
 
-// Precompute halo properties once per iteration of group_finding
 HaloProps compute_halo_props(double logMstar, const BehrooziParams& params, double p_crit, double G) {
+    /**
+     * @brief Precompute halo properties once per iteration of group_finding
+     */
     double sol = find_root(-5., 4., logMstar, params);
     double M_h = std::pow(10., sol + params.M0); // Msun
     double R_h = std::cbrt((3.*M_h)/(4.*M_PI*200.*p_crit)); // Mpc
@@ -126,7 +134,7 @@ double Dist3D::operator()(const Vec3& mw_c, const Vec3& mw_s, double L) const {
     return dist;
 };
 
-/* The below method is used for the 2D distance implementation. */
+/* The below method is used if true 2D projected (NOT great-circle) distances are desired. */
 double DistPerp2D::operator()(const Vec3& mw_c, const Vec3& mw_s, double L) const {
 
     // Compute the relative distance between the satellite and the central
@@ -833,6 +841,10 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
 template<class D,class V>
 std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& periodic) {
+    /**
+     * @brief The work horse of the entire group finder
+     */
+    
     // If kdtree, initialize the AboriaNeighborBuilder class
     // Rebuild the tree upon every call to the class
     if (config.tree_search && !config.obs) {
@@ -982,6 +994,10 @@ GroupFinder<D,V>::run_once(
         const std::vector<Vec3>& velocities_pec,
         const Vec3& MW_pos_box, const Vec3& MW_vel_pec, 
         const double& Rmax, const double& scale, bool periodic) {
+    /**
+     * @brief High-level function for running the sim group finder.
+     * Gets called directly by external code.
+     */
     initialize(masses_unsorted, groupcat_ids, positions_box, velocities_pec, MW_pos_box, MW_vel_pec, periodic);
     return classify(Rmax, scale, periodic);
 }
@@ -995,6 +1011,9 @@ GroupFinder<D,V>::run_once_obs(
         const std::vector<double>& velocities_los,
         const double& Rmax, const double& scale,
         bool periodic) {
+    /**
+     * @brief High-level function for running the observational group finder.
+     */
     initialize_obs(masses_unsorted, groupcat_ids, positions, velocities_los);
     return classify(Rmax, scale, periodic);
 }

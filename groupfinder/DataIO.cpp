@@ -59,10 +59,8 @@ std::vector<std::vector<T>> HDF5Handler::readJagged1D(
     hsize_t dims[1];
     dataspace.getSimpleExtentDims(dims, nullptr);
     
-    // Create variable-length datatype
+    // Working with variable-length datatype
     H5::VarLenType vl_type(&predType);
-    
-    // Read variable-length data
     std::vector<hvl_t> vl_data(dims[0]);
     dataset.read(vl_data.data(), vl_type);
     
@@ -105,8 +103,6 @@ std::vector<std::vector<std::array<T, N>>> HDF5Handler::readJagged2D(
         result[i].resize(n_elements);
         std::memcpy(result[i].data(), vl_data[i].p, n_elements * sizeof(std::array<T, N>));
     }
-    
-    // Free variable-length memory
     dataset.vlenReclaim(vl_data.data(), vl_type, dataspace);
     
     return result;
@@ -128,7 +124,6 @@ void HDF5Handler::writeJagged1D(
     hsize_t dims[1] = {data.size()};
     H5::DataSpace dataspace(1, dims);
     
-    // Create dataset
     H5::DataSet dataset = group.createDataSet(name, vl_type, dataspace);
     
     // Prepare variable-length data
@@ -137,11 +132,8 @@ void HDF5Handler::writeJagged1D(
         vl_data[i].len = data[i].size();
         vl_data[i].p = const_cast<T*>(data[i].data());
     }
-    
-    // Write data
     dataset.write(vl_data.data(), vl_type);
-    
-    // Add metadata attribute
+    // Add metadata attribute to keep track of outer vector size
     H5::Attribute attr = dataset.createAttribute("outer_size", H5::PredType::NATIVE_UINT64, 
                                                   H5::DataSpace(H5S_SCALAR));
     uint64_t outer_size = data.size();
@@ -153,25 +145,25 @@ ObsInputData HDF5Handler::readObsData(const std::string& filename) {
         H5::H5File file(filename, H5F_ACC_RDONLY);
         ObsInputData data;
         
-        // Read masses
+        // masses = 1D array
         {
             H5::DataSet dataset = file.openDataSet("masses");
             data.masses = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
         }
         
-        // Read positions (as 2D array)
+        // positions = 2D array
         {
             H5::DataSet dataset = file.openDataSet("positions");
             data.positions = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
         }
         
-        // Read ids
+        // ids = 1D array
         {
             H5::DataSet dataset = file.openDataSet("ids");
             data.ids = readDataset1D<std::int64_t>(dataset, H5::PredType::NATIVE_INT64);
         }
         
-        // Read velocities
+        // velocities = 1D array
         {
             H5::DataSet dataset = file.openDataSet("velocities");
             data.velocities = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -192,19 +184,19 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
         H5::H5File file(filename, H5F_ACC_RDONLY);
         SimInputData data;
         
-        // Read masses (as jagged 1D array)
+        // masses = 1D array
         {
             H5::DataSet dataset = file.openDataSet("masses");
             data.masses = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
         }
         
-        // Read positions (as jagged 2D array)
+        // positions = 2D array
         {
             H5::DataSet dataset = file.openDataSet("positions");
             data.positions = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
         }
         
-        // Read MW positions (single reference point from 2D array)
+        // MW positions = single reference point from 2D array, so shape (3,)
         {
             H5::DataSet dataset = file.openDataSet("ref_positions");
             auto ref_pos_vec = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -214,7 +206,7 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
             data.ref_positions = ref_pos_vec[0];
         }
 
-        // Read MW velocities (single reference point from 2D array)
+        // MW velocities = single reference point from 2D array
         {
             H5::DataSet dataset = file.openDataSet("ref_velocities");
             auto ref_vel_vec = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -224,13 +216,13 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
             data.ref_velocities = ref_vel_vec[0];
         }
         
-        // Read ids (as 1D array)
+        // ids = 1D array
         {
             H5::DataSet dataset = file.openDataSet("ids");
             data.ids = readDataset1D<std::int64_t>(dataset, H5::PredType::NATIVE_INT64);
         }
         
-        // Read velocities (as 2D array)
+        // velocities = 2D array
         {
             H5::DataSet dataset = file.openDataSet("velocities");
             data.velocities = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -250,14 +242,12 @@ ConcentrationData HDF5Handler::readConcentrationData(const std::string& filename
     try {
         H5::H5File file(filename, H5F_ACC_RDONLY);
         ConcentrationData data;
-        
-        // Read halo_masses
+
         {
             H5::DataSet dataset = file.openDataSet("halo_masses");
             data.halo_masses = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
         }
-        
-        // Read concentration
+
         {
             H5::DataSet dataset = file.openDataSet("concentration");
             data.concentration = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -273,7 +263,7 @@ ConcentrationData HDF5Handler::readConcentrationData(const std::string& filename
     }
 }
 
-// Function to write results
+// Main function to write results
 void HDF5Handler::writeResults(
     const std::string& filename,
     const GroupFinderResults& results,
@@ -286,20 +276,15 @@ void HDF5Handler::writeResults(
         
         // Create root group for results
         H5::Group results_group(file.createGroup("/results"));
-        
-        // Write central_ids
+
         writeDataset1D(results_group, "central_ids", results.central_ids, H5::PredType::NATIVE_INT64);
-            
-        // Write halo_masses
         writeDataset1D(results_group, "halo_masses", results.halo_masses, H5::PredType::NATIVE_DOUBLE);
-            
-        // Write flattened group member IDs
         writeJagged1D(results_group, "group_member_ids", results.group_member_ids, H5::PredType::NATIVE_INT64);
         
         // Create configuration group
         H5::Group config_group(file.createGroup("/configuration"));
 
-        // Create selection criteria dataset
+        // Make selection criteria dataset
         {
             double sel_data[] = {config.R_h_group, config.V_vir_group, config.R_h_iso, config.V_vir_iso};
             hsize_t dims[1] = {4};
@@ -380,14 +365,14 @@ void HDF5Handler::writeResults(
                                                                 H5::DataSpace(H5S_SCALAR));
         attr_names.write(str_type, std::string("total_groups, isolated_count, group_count"));
         
-        // Write timestamp as attribute on root if provided
+        // Add timestamp as attribute on root if provided
         if (!timestamp.empty()) {
             H5::StrType str_type(H5::PredType::C_S1, 256);
             file.createAttribute("timestamp", str_type, H5::DataSpace(H5S_SCALAR)).write(str_type, timestamp);
         }
         
         file.close();
-        
+        // Structure of output files
         std::cout << "Wrote HDF5 output: " << filename << "\n";
         std::cout << "File structure:\n";
         std::cout << "  /results/\n";

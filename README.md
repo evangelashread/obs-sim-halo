@@ -1,24 +1,28 @@
-# GroupFinder
+# ObsSimHalo
 
 A high-performance, halo-based galaxy group finding algorithm implemented in C++ with a Python interface, designed for consistent comparisons between observational and simulation data.
 
-**Note: the GroupFinder is still a work in progress.**
+**Note: this repository is still a work in progress.**
 
 ## Overview
 
-The GroupFinder offers two main approaches for identifying galaxy groups:
+ObsSimHalo offers two main approaches for identifying galaxy groups:
 
 1. A simple halo-based group finder that uses abundance matching to assign galaxies to groups based on the mass of their halo, estimated from a stellar-to-halo-mass relation ([Behroozi et al. 2019](https://doi.org/10.1093/mnras/stz1182)).
 
-2. An adaptation of the [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) algorithm that classifies galaxies using their number density contrast in redshift/velocity space. This method is better suited for like-for-like comparisons of observational and simulation data.
+2. An adaptation of the popular [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) algorithm that classifies galaxies using their number density contrast in redshift/velocity space. This method is better suited for like-for-like comparisons of observational and simulation data.
 
 This algorithm has been tested with [TNG50 data](https://www.tng-project.org/data/) and observational data sourced from the 50 Mpc Galaxy Catalog ([Ohlson et al. 2024](https://github.com/davidohlson/50MGC)) and the [DESI Extragalactic Dwarf Galaxy Catalog](https://data.desi.lbl.gov/doc/releases/dr1/vac/extragalactic-dwarfs/).
 
+In the adaptation of the Yang et al. (2005) algorithm (density-contrast-based classification), the estimated worst-case time complexity is O(N^2) when a brute force search is used. For N=10^6, this particular algorithm runs in ~30 min on an Intel i7 13th gen core (Ubuntu) if the cutoff radius for the brute search exceeds the radius of the sample volume. The 6D classification is accelerated with the use of k-d trees, achieving approximately O(N log N) complexity. For N=10^6, the 6D algorithm runs in ~5 min.
+
+Note: the algorithm explicitly assumes z ~ 0. In later iterations, ObsSimHalo may be updated to account for redshift dependence.
+
 ### Observationally Consistent Classification
 
-The GroupFinder can classify groups in simulated catalogs in a way that mimics observations. To do this, it reduces six-dimensional simulation data (3D position + 3D velocity) to three dimensions (RA-like, Dec-like, and line-of-sight velocity/distance). A reference subhalo (ideally a Milky Way analogue) must be specified to anchor the coordinate system.
+This group finder can classify groups in simulated catalogs in a way that mimics observations. To do this, it reduces six-dimensional simulation data (3D position + 3D velocity) to three dimensions (RA-like, Dec-like, and line-of-sight velocity/distance). A reference subhalo (ideally a Milky Way analogue) must be specified to anchor the coordinate system.
 
-When using the density-contrast method, we recommend scaling the parameter "B" to account for observational incompleteness. In the examples, "B" is set to the ratio of observed to simulated galaxy number densities at a given mass/luminosity limit.
+When using the density-contrast method, it's recommended to scale the parameter "B" to account for observational incompleteness. In the examples, "B" is set to the ratio of observed to simulated galaxy number densities at a given mass/luminosity limit.
 
 ## Dependencies
 
@@ -53,8 +57,8 @@ Required packages:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/group-finder.git
-   cd group-finder
+   git clone https://github.com/yourusername/obs-sim-halo.git
+   cd obs-sim-halo
    ```
 
 2. **Install Python dependencies**:
@@ -74,6 +78,12 @@ Required packages:
    make obs  # For observational data processing
    make sim  # For simulation data processing
    ```
+
+5. **Run tests**
+   ```
+   python3 tests/run_tests.py
+   ```
+   Run to ensure your installation is working.
 
 ## Usage
 
@@ -163,4 +173,4 @@ Contributions are welcome — please open an issue or create a pull request.
 
 ## Citation
 
-Please cite Shread et al. 2026 if you use this code in your research.
+Please cite Shread et al. 2026 (submitted; link coming soon) if you use this code in your research.

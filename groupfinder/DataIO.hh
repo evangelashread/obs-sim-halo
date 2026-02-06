@@ -16,16 +16,18 @@ using IDType = std::int64_t;
 
 /**
  * @brief Structure to hold input observational data
+ * Positions are assumed to be in spherical coords (radial distance, RA, Dec)
  */
 struct ObsInputData {
     std::vector<double> masses;
-    std::vector<std::array<double, 3>> positions;
+    std::vector<std::array<double, 3>> positions; // 
     std::vector<IDType> ids;
     std::vector<double> velocities;
 };
 
 /**
  * @brief Structure to hold input simulation data
+ * Positions are assumed to be in Cartesian coords (x, y, z)
  */
 struct SimInputData {
     std::vector<double> masses;
@@ -55,6 +57,8 @@ struct GroupFinderResults {
 
 /**
  * @brief Structure to hold configuration parameters
+ * These are just copied from the JSON config file but stored here
+ * for redundancy.
  */
 struct GroupFinderConfig {
     int dim;
@@ -80,9 +84,9 @@ struct GroupFinderConfig {
  */
 
 struct GroupFinderStatistics {
-    std::int64_t total_groups;
-    std::int64_t isolated_count;
-    std::int64_t group_count;
+    std::int64_t total_groups; // total number of groups found
+    std::int64_t isolated_count; // total number of isolated galaxies
+    std::int64_t group_count; // total number of galaxies in groups (non-isolated)
 };
 
 /**
