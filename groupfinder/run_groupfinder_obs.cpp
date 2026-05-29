@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Load concentration data using HDF5 handler
+    // Load concentration data
     dataio::ConcentrationData conc_data;
     try {
         conc_data = dataio::HDF5Handler::readConcentrationData("input/concentration.h5");
@@ -52,7 +52,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Configure run parameters: read in from config JSON file
+    // Load redshift-distance data
+    dataio::RedshiftDistanceData z_dist_data;
+    try {
+        z_dist_data = dataio::HDF5Handler::readRedshiftDistanceData("input/redshift_distance.h5");
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading redshift-distances data: " << e.what() << "\n";
+        return 1;
+    }
+
+    // Configure run parameters from config JSON file
     std::ifstream config_stream(config_file);
     if (!config_stream) {
         std::cerr << "Cannot open config file: " << config_file << "\n";
@@ -79,6 +88,8 @@ int main(int argc, char* argv[]) {
     bool periodic = config_json["periodic"].get<bool>();
     double B_scaling = config_json["B_scaling"].get<double>();
     double h_val = config_json["h"].get<double>();
+    bool use_distance = config_json["use_distance"].get<bool>();
+    double omega_M = config_json["omega_M"].get<double>();
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -88,17 +99,20 @@ int main(int argc, char* argv[]) {
     };
     
     GroupFinderSettings config{
+        3,
         obs_val,
         vel_cut_val,
         tree_search_val,
         sat_reclass_val,
         iso_reclass_val,
-        contrast_val
+        contrast_val,
+        use_distance
     };
 
     // Run group finder
-    GroupFinder<DistObs, VelObs> finder(sel, config, box_size, h_val*100., periodic);
-    finder.set_conc_table(conc_data.halo_masses, conc_data.concentration);
+    GroupFinder<DistObs, VelObs> finder(sel, config, box_size, h_val*100., omega_M, periodic);
+    finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+    finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
   
     auto result = finder.run_once_obs(
         galaxy_data.masses, 
@@ -132,13 +146,11 @@ int main(int argc, char* argv[]) {
               << ", Isolated centrals = " << isolated_count
               << ", Group members = " << group_count << std::endl;
 
-    // Prepare results structure
     dataio::GroupFinderResults results;
     results.group_member_ids = group_indices;
     results.central_ids = central_ids;
     results.halo_masses = halo_masses;
     
-    // Prepare configuration structure
     dataio::GroupFinderConfig output_config{
         dim,
         obs_val,
@@ -151,21 +163,22 @@ int main(int argc, char* argv[]) {
         config.iso_reclass,
         config.vel_cut,
         config.contrast,
+        config.use_distance,
         box_size,
         R_max,
         periodic,
         B_scaling,
-        h_val
+        h_val,
+        omega_M
     };
     
-    // Prepare statistics structure
     dataio::GroupFinderStatistics stats{
         total_groups,
         isolated_count,
         group_count
     };
 
-    // Write results using HDF5 handler
+    // Write results
     try {
         dataio::HDF5Handler::writeResults(outfilename, results, output_config, stats, datetime.str());
     } catch (const std::exception& e) {

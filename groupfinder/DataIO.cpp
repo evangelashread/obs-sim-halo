@@ -196,7 +196,7 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
             data.positions = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
         }
         
-        // MW positions = single reference point from 2D array, so shape (3,)
+        // ref positions = single reference point from 2D array, so shape (3,)
         {
             H5::DataSet dataset = file.openDataSet("ref_positions");
             auto ref_pos_vec = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -206,7 +206,7 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
             data.ref_positions = ref_pos_vec[0];
         }
 
-        // MW velocities = single reference point from 2D array
+        // ref velocities = single reference point from 2D array
         {
             H5::DataSet dataset = file.openDataSet("ref_velocities");
             auto ref_vel_vec = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
@@ -249,8 +249,30 @@ ConcentrationData HDF5Handler::readConcentrationData(const std::string& filename
         }
 
         {
-            H5::DataSet dataset = file.openDataSet("concentration");
-            data.concentration = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            H5::DataSet dataset = file.openDataSet("redshifts");
+            data.redshifts = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.concentration.resize(data.redshifts.size(), std::vector<double>(data.halo_masses.size()));
+        }
+
+        // Read concentration data for each redshift bin
+        // By construction of the file in ConcentrationData.py, datasets are already ordered by redshift
+        {
+            H5::Group group = file.openGroup("/concentration");
+            hsize_t n_objs = group.getNumObjs();
+            for (hsize_t i = 0; i < n_objs; ++i) {
+                std::string dataset_name = group.getObjnameByIdx(i);
+                H5G_obj_t type = group.getObjTypeByIdx(i);
+                if (type != H5G_DATASET) continue;  
+                H5::DataSet dataset = group.openDataSet(dataset_name);
+                // Check z attribute matches expected redshift
+                H5::Attribute attr = dataset.openAttribute("z");
+                double z_attr = 0.0;
+                attr.read(H5::PredType::NATIVE_DOUBLE, &z_attr);
+                if (std::abs(z_attr - data.redshifts[i]) > 1e-5) {
+                    throw std::runtime_error("Redshift attribute does not match expected value for dataset: " + dataset_name);
+                } // Ideally we should just read all daasets in anyway and sort after the fact; might do this in a later commit
+                data.concentration[i] = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            }
         }
         
         file.close();
@@ -263,7 +285,32 @@ ConcentrationData HDF5Handler::readConcentrationData(const std::string& filename
     }
 }
 
-// Main function to write results
+RedshiftDistanceData HDF5Handler::readRedshiftDistanceData(const std::string& filename) {
+    try {
+        H5::H5File file(filename, H5F_ACC_RDONLY);
+        RedshiftDistanceData data;
+
+        {
+            H5::DataSet dataset = file.openDataSet("distances"); // comoving distances in Mpc
+            data.distances = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+        }
+
+        {
+            H5::DataSet dataset = file.openDataSet("redshifts");
+            data.redshifts = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+        }
+
+        file.close();
+        std::cout << "Redshift-distance relation data loaded successfully from: " << filename << std::endl;
+        
+        return data;
+        
+    } catch (const H5::Exception& e) {
+        throw std::runtime_error("HDF5 error reading redshift-distance relation data: " + std::string(e.getCDetailMsg()));
+    }
+}
+
+// Main function to write group finder results
 void HDF5Handler::writeResults(
     const std::string& filename,
     const GroupFinderResults& results,
@@ -301,7 +348,7 @@ void HDF5Handler::writeResults(
             attr_names.write(str_type, std::string("R_h_group, V_vir_group, R_h_iso, V_vir_iso"));
         }
         
-        // Write boolean settings as attributes
+        // Write boolean config settings as attributes
         config_group.createAttribute("kdtree_search_used", 
                                     H5::PredType::NATIVE_HBOOL, 
                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
@@ -318,8 +365,11 @@ void HDF5Handler::writeResults(
                                     H5::PredType::NATIVE_HBOOL, 
                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
                                                                       &config.velocity_cut_imposed);
-        
-        // Write individual selection criteria values as attributes
+        config_group.createAttribute("use_comoving_distance", 
+                                    H5::PredType::NATIVE_HBOOL, 
+                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
+                                                                      &config.use_comoving_distance);
+        // Write selection criteria values as attributes
         config_group.createAttribute("R_h_group", H5::PredType::NATIVE_DOUBLE, 
                                      H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
                                                                        &config.R_h_group);
@@ -348,6 +398,9 @@ void HDF5Handler::writeResults(
         config_group.createAttribute("h", H5::PredType::NATIVE_DOUBLE, 
                                      H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
                                                                        &config.h);
+        config_group.createAttribute("omega_M", H5::PredType::NATIVE_DOUBLE,
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE,
+                                                                       &config.omega_M);
         
         // Create statistics group
         H5::Group stats_group(file.createGroup("/statistics"));
@@ -372,7 +425,7 @@ void HDF5Handler::writeResults(
         }
         
         file.close();
-        // Structure of output files
+        // Overall structure of output files
         std::cout << "Wrote HDF5 output: " << filename << "\n";
         std::cout << "File structure:\n";
         std::cout << "  /results/\n";

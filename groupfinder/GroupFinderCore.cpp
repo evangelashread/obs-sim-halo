@@ -35,33 +35,120 @@ static inline Vec3 minimal(const Vec3& a,const Vec3& b,double L) {
     };
 }
 
-static double behroozi_SMHM(const double& x, double current_mass, const BehrooziParams& params) {
-    return params.M0 + params.epsilon - std::log10(std::pow(10, -params.alpha * x) + std::pow(10, -params.beta * x))
-            + params.gamma * std::exp(-0.5 * std::pow(x / params.delta, 2)) - current_mass;
+static inline double critical_density(double z, double p_crit_0, double omega_m) {
+    /**
+     * @brief Compute the critical density rho at a given redshift
+     */
+    return p_crit_0 * (omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
+}
+
+static inline double Hubble(double z, double H0, double omega_m) {
+    /**
+     * @brief Compute the Hubble parameter H(z) at a given redshift
+     */
+    return H0 * std::sqrt(omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
+}
+
+static double behroozi_SMHM(double z, const double& x, double current_Mstar, const BehrooziParams& params) {
+    /**
+     * @brief Helper for the iterative solver find_Mh. Returns the difference between log Mstar calculated 
+     * from the Behroozi et al. 2019 SMHM relation, and the current log Mstar for a given log Mpeak/M1 (x) 
+     * and redshift (z).
+     */
+    
+    double a = 1.0 / (1.0 + z);
+    double a1 = a - 1.0;
+    double lna = std::log(a);
+
+    struct ZParams {
+        double m_1, eps, alpha, beta, delta, gamma;
+    };
+
+    ZParams zp;
+
+    zp.m_1 = params.M_0 + a1 * params.M_A - lna * params.M_LOGA + z * params.M_Z; // log10(M1/Msun)
+    zp.eps = params.EPS_0 + a1 * params.EPS_A - lna * params.EPS_LOGA + z * params.EPS_Z;
+    zp.alpha = params.ALPHA_0 + a1 * params.ALPHA_A - lna * params.ALPHA_LOGA + z * params.ALPHA_Z;
+    zp.beta = params.BETA_0 + a1 * params.BETA_A + z * params.BETA_Z;
+    zp.delta = params.DELTA_0;
+    zp.gamma = std::pow(10, params.GAMMA_0 + a1 * params.GAMMA_A + z * params.GAMMA_Z);
+
+    double x2 = x / zp.delta; // x = log10(Mpeak/M1)
+    double logmstar_pred = zp.eps + zp.m_1
+        - std::log10(std::pow(10, -zp.alpha * x) + std::pow(10, -zp.beta * x))
+        + zp.gamma * std::exp(-0.5 * (x2 * x2)) ;
+    
+    return logmstar_pred - current_Mstar;
 }
 
 static inline double interp_lin(double x,
                                 const std::vector<double>& x_arr,
                                 const std::vector<double>& y_arr)
 {
-    // x_arr must be sorted in ascending order
+    // x_arr should be sorted in ascending order
     assert(x_arr.size() == y_arr.size() && x_arr.size() >= 2);
-    if (x <= x_arr.front()) return y_arr.front();
-    if (x >= x_arr.back()) return y_arr.back();
-    auto it = std::lower_bound(x_arr.begin(), x_arr.end(), x); // first x_arr[j] >= x
-    size_t j = size_t(it - x_arr.begin()); // get location of index just above x
-    size_t i = j - 1; // index just below x
+    // handle values outside bounds by clamping
+    size_t i = 0;
+    if (x <= x_arr.front()) { return y_arr.front(); } 
+    else if (x >= x_arr.back()) { return y_arr.back(); } 
+    else {
+        auto it = std::upper_bound(x_arr.begin(), x_arr.end(), x); // first x_arr element > x
+        i = size_t(it - x_arr.begin()) - 1; // index just below x
+    }
+    size_t j = i + 1;// index just above x
     // Linear interpolation
-    double t = (x - x_arr[i]) / (x_arr[j] - x_arr[i]);
-    return (1.0 - t) * y_arr[i] + t * y_arr[j];
+    if (x_arr[j] == x_arr[i]) { return y_arr[i]; }
+    else {
+        double t = (x - x_arr[i]) / (x_arr[j] - x_arr[i]);
+        return (1.0 - t) * y_arr[i] + t * y_arr[j];
+    }
 }
 
-static double find_root(double x0, double x1, double current_mass, const BehrooziParams& params, double tolerance = 1e-9, int max_iter = 100) {
+static inline double bilinear_interp(double x, double y,
+                                const std::vector<double>& x_arr,
+                                const std::vector<double>& y_arr,
+                                const std::vector<std::vector<double>>& z_arr)
+{
+    // x_arr and y_arr should be sorted in ascending order
+    assert(x_arr.size() == z_arr.size() && y_arr.size() == z_arr[0].size());
+    // Clip values outside the grid to bounds
+    size_t i = 0;
+    if (x <= x_arr.front()) { i = 0;} 
+    else if (x >= x_arr.back()) { i = x_arr.size() - 2; } 
+    else {
+        auto it_x = std::upper_bound(x_arr.begin(), x_arr.end(), x);
+        i = size_t(it_x - x_arr.begin()) - 1;
+    }
+    size_t k = 0;
+    if (y <= y_arr.front()) { k = 0; } 
+    else if (y >= y_arr.back()) { k = y_arr.size() - 2; } 
+    else {
+        auto it_y = std::upper_bound(y_arr.begin(), y_arr.end(), y);
+        k = size_t(it_y - y_arr.begin()) - 1;
+    }
+    
+    size_t j = i + 1;
+    size_t l = k + 1;
+    // control for undefined behavior
+    const double eps = 1e-15;
+    double dx = x_arr[j] - x_arr[i];
+    double dy = y_arr[l] - y_arr[k];
+    double t = (std::fabs(dx) < eps) ? 0.0 : (x - x_arr[i]) / dx;
+    double u = (std::fabs(dy) < eps) ? 0.0 : (y - y_arr[k]) / dy;
+    
+    return (1.0 - t) * (1.0 - u) * z_arr[i][k]
+         + t * (1.0 - u) * z_arr[j][k]
+         + (1.0 - t) * u* z_arr[i][l]
+         + t * u * z_arr[j][l];
+}
+
+static double find_Mh(const double& z, double x0, double x1, double current_mass, 
+                      const BehrooziParams& params, double tolerance = 1e-9, int max_iter = 100) {
     /**
      * @brief Secant root-finding method for inverting Behroozi SMHM relation
      */
-    double f_x0 = behroozi_SMHM(x0, current_mass, params);
-    double f_x1 = behroozi_SMHM(x1, current_mass, params);
+    double f_x0 = behroozi_SMHM(z, x0, current_mass, params);
+    double f_x1 = behroozi_SMHM(z, x1, current_mass, params);
 
     for (int i = 0; i < max_iter; ++i) {
         if (std::fabs(f_x1) < tolerance) {
@@ -85,25 +172,42 @@ static double find_root(double x0, double x1, double current_mass, const Behrooz
         x0 = x1;
         f_x0 = f_x1;
         x1 = x2;
-        f_x1 = behroozi_SMHM(x1, current_mass, params);
+        f_x1 = behroozi_SMHM(z, x1, current_mass, params);
     }
 
     std::cout << "Max iterations reached without convergence. Last approximation: " << x1 << "\n";
     return x1;
 }
 
-HaloProps compute_halo_props(double logMstar, const BehrooziParams& params, double p_crit, double G) {
+static inline double VelocityLOS(const Vec3& pos, const Vec3& vel) {
+    // Assume position and velocity is already defined relative to the observer
+    double r2 = pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2];
+    if(r2==0.) return 0.0; // This case occurs if the galaxy is the MW
+    double r = std::sqrt(r2);
+    // Compute the normal vector for the line-of-sight distance
+    Vec3 n = {pos[0]/r, pos[1]/r, pos[2]/r};
+    // Compute the velocity of the galaxy projected along its line-of-sight normal vector
+    double v_LOS = vel[0]*n[0] + vel[1]*n[1] + vel[2]*n[2];
+    return v_LOS;
+}
+
+HaloProps compute_halo_props(double z, double logMstar, double p_crit_0, const BehrooziParams& params, double omega_m) {
     /**
      * @brief Precompute halo properties once per iteration of group_finding
      */
-    double sol = find_root(-5., 4., logMstar, params);
-    double M_h = std::pow(10., sol + params.M0); // Msun
+    double a = 1.0 / (1.0 + z);
+    double a1 = a - 1.0;
+    double lna = std::log(a);
+    double sol = find_Mh(z, -5., 5., logMstar, params);
+    double M_1 = params.M_0 + a1 * params.M_A - lna * params.M_LOGA + z * params.M_Z; // log10(M1/Msun)
+    double M_h = std::pow(10., sol + M_1); // Msun
+    double p_crit = critical_density(z, p_crit_0, omega_m);
     double R_h = std::cbrt((3.*M_h)/(4.*M_PI*200.*p_crit)); // Mpc
-    double V_vir = std::sqrt(G * M_h / R_h); // km/s
+    double V_vir = std::sqrt(gf::GF_G * M_h / R_h); // km/s
     return {M_h, R_h, V_vir};
 }
 
-void summarize(const std::string& label, const std::vector<IDType>& group_label){
+void summarize(const std::string& label, const std::vector<IDType>& group_label) {
     std::unordered_map<IDType,int> group_sizes;
     group_sizes.reserve(group_label.size());
     for (size_t i = 0; i < group_label.size(); ++i) {
@@ -228,33 +332,8 @@ double DistObs::operator()(const double& RA_cen, const double& Dec_cen,
 
 /* ################# Define velocity methods ################ */
 /* The below method mimics velocity criteria implementation of an observational group finder */
-double VelTotal::operator()(const Vec3& mw_c, const Vec3& mw_s,
-                      const Vec3& v_c, const Vec3& v_s, double H) const {
-                        
-    double rc2 = mw_c[0]*mw_c[0] + mw_c[1]*mw_c[1] + mw_c[2]*mw_c[2];
-    double rs2 = mw_s[0]*mw_s[0] + mw_s[1]*mw_s[1] + mw_s[2]*mw_s[2];
-    if(rc2==0.) return 0.0; // This case occurs if the central is the MW
-    if(rs2==0.) return 0.0; // This case occurs if the satellite is the MW
-
-    double rc = std::sqrt(rc2);
-    double rs = std::sqrt(rs2);
-
-    // Compute the normal vector for the line-of-sight distance to the central
-    Vec3 nc = {mw_c[0]/rc, mw_c[1]/rc, mw_c[2]/rc};
-    // ... and to the satellite
-    Vec3 ns = {mw_s[0]/rs, mw_s[1]/rs, mw_s[2]/rs};
-
-    // Compute the velocity of the central projected along its line-of-sight normal vector
-    double vc_LOS = (v_c[0] * nc[0] + v_c[1] * nc[1] + v_c[2] * nc[2]);
-    // ... and do the same for the satellite
-    double vs_LOS = (v_s[0] * ns[0] + v_s[1] * ns[1] + v_s[2] * ns[2]);
-
-    // Now compute and add the Hubble velocity
-    double hubble_c = H * rc;
-    double hubble_s = H * rs;
-
-    // Return the relative velocity
-    return (vs_LOS + hubble_s) - (vc_LOS + hubble_c);
+double VelTotal::operator()(const double& z_c, const double& z_s) const {          
+    return gf::GF_C * (z_s - z_c) / (1.0 + z_c);
 }
 
 /* The below methods are relevant for implementations considering peculiar velocity only */
@@ -265,25 +344,7 @@ double VelPeculiar3D::operator()(const Vec3& v_c, const Vec3& v_s, double L) con
 
 double VelPeculiar2D::operator()(const Vec3& mw_c, const Vec3& mw_s,
                                 const Vec3& v_c, const Vec3& v_s) const {
-    
-    double rc2 = mw_c[0]*mw_c[0] + mw_c[1]*mw_c[1] + mw_c[2]*mw_c[2];
-    double rs2 = mw_s[0]*mw_s[0] + mw_s[1]*mw_s[1] + mw_s[2]*mw_s[2];
-    if(rc2==0.) return 0.0; // This case occurs if the central is the MW
-    if(rs2==0.) return 0.0; // This case occurs if the satellite is the MW
-
-    double rc = std::sqrt(rc2);
-    double rs = std::sqrt(rs2);
-
-    // Compute the normal vector for the line-of-sight distance to the central
-    Vec3 nc = {mw_c[0]/rc, mw_c[1]/rc, mw_c[2]/rc};
-    // ... and to the satellite
-    Vec3 ns = {mw_s[0]/rs, mw_s[1]/rs, mw_s[2]/rs};
-
-    // Compute the velocity of the central projected along its line-of-sight normal vector
-    double vc_LOS = (v_c[0] * nc[0] + v_c[1] * nc[1] + v_c[2] * nc[2]);
-    // ... and do the same for the satellite
-    double vs_LOS = (v_s[0] * ns[0] + v_s[1] * ns[1] + v_s[2] * ns[2]);
-    return vs_LOS - vc_LOS;
+    return VelocityLOS(mw_s, v_s) - VelocityLOS(mw_c, v_c);
 }
 
 double VelObs::operator()(const double& v_c, const double& v_s) const {
@@ -291,26 +352,79 @@ double VelObs::operator()(const double& v_c, const double& v_s) const {
 }
 
 template<class D,class V>
-double GroupFinder<D,V>::c_from_M(double logM) const {
+double GroupFinder<D,V>::c_from_M(double logM, double z) const {
     if (tab_logM_c_.size() < 2) return std::numeric_limits<double>::quiet_NaN();
-    double logc = interp_lin(logM, tab_logM_c_, tab_logc_); // x in log10(M), y in log10(c)
-    return std::pow(10.0, logc);
+    if (tab_z_c_.size() == 1) {
+        double logc = interp_lin(logM, tab_logM_c_, tab_logc_[0]); // x in log10(M), y in log10(c)
+        return std::pow(10.0, logc);
+    } else {
+        // bilinear interpolation in logM and z to get logc
+        double logc = bilinear_interp(z, logM, tab_z_c_, tab_logM_c_, tab_logc_);
+        return std::pow(10.0, logc);
+    }
 }
 
 template<class D,class V>
-void GroupFinder<D,V>::set_conc_table(std::vector<double> M, std::vector<double> c_array) {
-    const size_t N = std::min(M.size(), c_array.size());
-    if (N < 2) {
+void GroupFinder<D,V>::set_conc_table(std::vector<double> M_arr, std::vector<std::vector<double>> c_array, std::vector<double> redshift) {
+    const size_t N_M = M_arr.size();
+    const size_t N_z = redshift.size();
+
+    if (c_array.size() != N_z) {
+        std::cerr << "Warning: the number of vectors in the concentration table must equal the number of redshift bins.\n";
+        std::abort();
+    }
+    if (N_M < 2) {
         std::cerr << "Warning: concentration table must have at least two entries.\n";
         std::abort();
     }
     // Copy and build logs (assumes monotonic/unique already)
-    tab_logM_c_.resize(N);
-    tab_logc_.resize(N);
-    for (size_t i = 0; i < N; ++i) {
-        tab_logc_[i] = std::log10(c_array[i]);
+    tab_logM_c_.resize(N_M);
+    tab_z_c_.resize(N_z);
+    tab_logc_.resize(N_z);
+    for (size_t i = 0; i < N_z; ++i) {
+        tab_logc_[i].resize(N_M);
+        std::vector<double> vec_z = c_array[i];
+        if (vec_z.size() != N_M) {
+            std::cerr << "Warning: the number of concentration elements per redshift bin must equal the number of mass bins.\n";
+            std::abort();
+        }
+        for (size_t j = 0; j < N_M; ++ j) {
+            vec_z[j] = std::log10(vec_z[j]);
+        }
+        tab_logc_[i] = vec_z;
     }
-    tab_logM_c_ = M;
+    tab_logM_c_ = M_arr;
+    tab_z_c_ = redshift;
+}
+
+template<class D,class V>
+double GroupFinder<D,V>::z_from_D(double d) const {
+    if (tab_z_D_.size() < 2) return std::numeric_limits<double>::quiet_NaN();
+    double z = interp_lin(d, tab_D_, tab_z_D_); // x in cMpc, y is z
+    return z;
+}
+
+template<class D,class V>
+double GroupFinder<D,V>::D_from_z(double z) const {
+    if (tab_D_.size() < 2) return std::numeric_limits<double>::quiet_NaN();
+    double d = interp_lin(z, tab_z_D_, tab_D_); // x is z, y in cMpc
+    return d;
+}
+
+template<class D,class V>
+void GroupFinder<D,V>::set_z_dist_table(std::vector<double> z_arr, std::vector<double> D_arr) {
+    const size_t N_D = D_arr.size();
+    const size_t N_z = z_arr.size();
+    if (N_D < 2) {
+        std::cerr << "Warning: redshift-distance table must have at least two entries.\n";
+        std::abort();
+    }
+    // Copy and build logs (assumes monotonic/unique already)
+    tab_z_D_.resize(N_z);
+    tab_D_.resize(N_D);
+    
+    tab_z_D_ = z_arr;
+    tab_D_ = D_arr;
 }
 
 // This will generally take the index of one galaxy and the indices of its candidate neighbors
@@ -323,11 +437,13 @@ TransformOutput GroupFinder<D,V>::transform(size_t central_local, const std::vec
     if (!config.obs) { // Check that this is simulation data
         const auto& mw_c = MWcoords[central_local];
         const auto& v_cen  = velocities_sorted[central_local];
+        const auto& z_c = total_redshifts[central_local];
         // Compute the distances and relative velocities
         for(size_t i = 0; i < local_indices.size(); ++i){
             size_t local_id = local_indices[i];
             const auto& mw_s = MWcoords[local_id];
             const auto& v_sat  = velocities_sorted[local_id];
+            const auto& z_s = total_redshifts[local_id];
             if constexpr (std::is_same_v<D,DistObs>) {
                 std::cerr << "Error: Distances must not be of type DistObs when using the 3D/2D distance methods.\n";
                 std::abort();
@@ -339,22 +455,36 @@ TransformOutput GroupFinder<D,V>::transform(size_t central_local, const std::vec
             } else if constexpr (std::is_same_v<V,VelPeculiar2D>) {
                 tr.rel_vels[i] = vel_method(mw_c,mw_s,v_cen,v_sat);
             } else if constexpr (std::is_same_v<V,VelTotal>) {
-                tr.rel_vels[i] = vel_method(mw_c,mw_s,v_cen,v_sat,H);
+                tr.rel_vels[i] = vel_method(z_c,z_s);
             }
         } 
     } else { // Observational data
-        const auto& R_cen = positions_sorted[central_local][0];
+        double R_cen = 0., v_cen = 0., z_cen = 0.;
+        if (config.use_distance) {
+            R_cen = positions_sorted[central_local][0];
+            v_cen  = velocities_sorted_obs[central_local];
+        } else {
+            z_cen = total_redshifts[central_local];
+            R_cen = D_from_z(z_cen);
+        }
         const auto& Dec_cen = positions_sorted[central_local][1];
         const auto& RA_cen = positions_sorted[central_local][2];
-        const auto& v_cen  = velocities_sorted_obs[central_local];
         for (size_t i = 0; i < local_indices.size(); ++i) {
             size_t local_id = local_indices[i];
             const auto& Dec_sat = positions_sorted[local_id][1];
             const auto& RA_sat = positions_sorted[local_id][2];
-            if constexpr (std::is_same_v<V,VelObs>) {
-                tr.rel_vels[i] = vel_method(v_cen, velocities_sorted_obs[local_id]);
+            double v_sat = 0., z_sat = 0.;
+            if (config.use_distance) {
+                v_sat = velocities_sorted_obs[local_id];
             } else {
-                std::cerr << "Error: Velocities must be of type VelObs when using the observational distance method.\n";
+                z_sat = total_redshifts[local_id];
+            }
+            if constexpr (std::is_same_v<V,VelObs>) {
+                tr.rel_vels[i] = vel_method(v_cen, v_sat);
+            } else if constexpr (std::is_same_v<V,VelTotal>) {
+                tr.rel_vels[i] = vel_method(z_cen, z_sat);
+            } else {
+                std::cerr << "Error: Velocities must be of type VelObs or VelTotal when using the observational distance method.\n";
                 std::abort();
             }
             if constexpr (std::is_same_v<D,DistObs>) {
@@ -375,16 +505,17 @@ std::array<double, 2> GroupFinder<D,V>::density_contrast(int local_c_id, double 
     double V_vir = halo_props[local_c_id].V_vir;
     double M_h = halo_props[local_c_id].M_h;
     double R_200 = halo_props[local_c_id].R_h;
+    double z = total_redshifts[local_c_id];
 
     // Compute concentration from halo mass
-    double c = c_from_M(std::log10(M_h));
+    double c = c_from_M(std::log10(M_h), z);
 
     double r_s = R_200/c;
     double sigma_v = V_vir/std::sqrt(2.); // units of km/s
     double x = trans_dist / r_s;
 
     auto p = [&](double rel_vel) -> double {
-        return (1./(std::sqrt(2.*M_PI)*sigma_v)) * std::exp(-std::pow(rel_vel, 2.) / (2.*sigma_v*sigma_v));
+        return (1./(std::sqrt(2.*M_PI)*sigma_v)) * std::exp(-(rel_vel*rel_vel) / (2.*sigma_v*sigma_v));
     }; // units of (km/s)^-1
     
     auto f = [&](double x) -> double { // dimensionless
@@ -404,8 +535,8 @@ std::array<double, 2> GroupFinder<D,V>::density_contrast(int local_c_id, double 
 
     // estimate projected surface density at R200
     double rho_200_rho_crit = delta / (c * (1. + c)*(1. + c)); // dimensionless
-    double B = rho_200_rho_crit * (4.*R_200*gf::GF_H)/(3.*sigma_v); // dimensionless
-    double P_M = gf::GF_H * Sigma_R_rho_gal * p(rel_vel);
+    double B = rho_200_rho_crit * (4.*R_200*H)/(3.*sigma_v); // dimensionless
+    double P_M = H * Sigma_R_rho_gal * p(rel_vel);
     return {P_M, B};
 }
 
@@ -463,7 +594,8 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             double rel_vel = tr.rel_vels[0];
             double R_h_cand = halo_props[local_c_id].R_h;
             double V_vir_cand = halo_props[local_c_id].V_vir;
-            double ratio = std::pow(rel_dist / (sel.R_h_group * R_h_cand), 2.) + std::pow(rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)), 2.);
+            double ratio = (rel_dist / (sel.R_h_group * R_h_cand))*(rel_dist / (sel.R_h_group * R_h_cand)) 
+                            + (rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)))*(rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)));
             double mass_cand = masses_sorted[local_c_id];
             std::array<double,2> dens = density_contrast(local_c_id, rel_dist, rel_vel);
             double P_M = dens[0];
@@ -627,7 +759,8 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             relative_velocities[k] = tr.rel_vels[0];
             halo_radii[k] = halo_props[local_gc_id].R_h;
             halo_velocities[k] = halo_props[local_gc_id].V_vir;
-            ratios[k] = std::pow(tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h), 2.) + std::pow(tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)), 2.);
+            ratios[k] = (tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h))*(tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h)) 
+                        + (tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)))*(tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)));
             std::array<double,2> dens = density_contrast(local_gc_id, relative_distances[k], tr.rel_vels[0]);
             P_M_cands[k] = dens[0];
             B_cands[k] = dens[1]*scale;
@@ -763,6 +896,7 @@ void GroupFinder<D,V>::initialize(const std::vector<double>& masses_unsorted,
         bool periodic) {
 
     // Sort the galaxies by descending mass
+    const double P_CRIT_0 = (3. * H*H) / (8. * M_PI * gf::GF_G); // M_sun/Mpc^3
     size_t N = masses_unsorted.size();
     mass_order.resize(N);
     std::iota(mass_order.begin(), mass_order.end(), 0);
@@ -770,6 +904,7 @@ void GroupFinder<D,V>::initialize(const std::vector<double>& masses_unsorted,
               [&](int a,int b){return masses_unsorted[a] > masses_unsorted[b];});
 
     masses_sorted.resize(N);
+    total_redshifts.resize(N);
     groupcat_ids_sorted.resize(N);
     positions_sorted.resize(N);
     velocities_sorted.resize(N);
@@ -790,16 +925,32 @@ void GroupFinder<D,V>::initialize(const std::vector<double>& masses_unsorted,
         Vec3 v = {velocities_sorted[i][0]-MW_vel_pec[0],
                   velocities_sorted[i][1]-MW_vel_pec[1],
                   velocities_sorted[i][2]-MW_vel_pec[2]};
+        double d2 = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
+        double dist = 0., cosmo_redshift = 0.;
+        if (d2 > 0.) { 
+            dist = std::sqrt(d2); 
+            cosmo_redshift = z_from_D(dist);
+        }
+        if (config.dim == 3) { // we are working in redshift space and need contribution from peculiar velocities
+            // Get v along the line of sight
+            double v_los = VelocityLOS(d, v);
+            double z_pec = v_los / gf::GF_C; // peculiar velocities are non-relativistic
+            total_redshifts[i] = (1 + cosmo_redshift)*(1 + z_pec) - 1.;
+        } else {
+            total_redshifts[i] = cosmo_redshift;
+        }
+
         // By default, assume periodic boundary conditions
         if (periodic) {
             d[0] = wrap(d[0],L); d[1] = wrap(d[1],L); d[2] = wrap(d[2],L);
         }
         MWcoords[i] = d;
         velocities_sorted[i] = v;
-        halo_props[i] = compute_halo_props(masses_unsorted[mass_order[i]], 
-                                                  gf::BehrooziParams(),
-                                                  gf::GF_P_CRIT,
-                                                  gf::GF_G);
+        halo_props[i] = compute_halo_props(total_redshifts[i],
+                                            masses_unsorted[mass_order[i]], 
+                                            P_CRIT_0,
+                                            gf::BehrooziParams(),
+                                            OMEGA_M);
         groupcat_ids_sorted[i] = groupcat_ids[mass_order[i]];
     }
 }
@@ -810,6 +961,7 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
         const std::vector<Vec3>& positions_unsorted,
         const std::vector<double>& velocities_los) {
 
+    const double P_CRIT_0 = (3. * H*H) / (8. * M_PI * gf::GF_G); // M_sun/Mpc^3
     // Sort the galaxies by descending mass
     size_t N = masses_unsorted.size();
     mass_order.resize(N);
@@ -820,20 +972,28 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
     masses_sorted.resize(N);
     groupcat_ids_sorted.resize(N);
     positions_sorted.resize(N);
-    velocities_sorted_obs.resize(N);
+    total_redshifts.resize(N);
     classification.resize(N);
     halo_props.resize(N);
     local_ids.resize(N);
 
+    if (config.use_distance) { velocities_sorted_obs.resize(N); }
+
     for(size_t i = 0; i < N; ++i) {
         local_ids[i] = (IDType)i;
         positions_sorted[i]  = positions_unsorted[mass_order[i]];
-        velocities_sorted_obs[i] = velocities_los[mass_order[i]];
         masses_sorted[i] = masses_unsorted[mass_order[i]];
-        halo_props[i] = compute_halo_props(masses_unsorted[mass_order[i]], 
-                                                  gf::BehrooziParams(),
-                                                  gf::GF_P_CRIT,
-                                                  gf::GF_G);
+        if (config.use_distance) { 
+            velocities_sorted_obs[i] = velocities_los[mass_order[i]];
+            total_redshifts[i] = z_from_D(positions_unsorted[mass_order[i]][0]);
+        } else {
+            total_redshifts[i] = positions_unsorted[mass_order[i]][0];
+        }
+        halo_props[i] = compute_halo_props(total_redshifts[i],
+                                            masses_unsorted[mass_order[i]],
+                                            P_CRIT_0,
+                                            gf::BehrooziParams(),
+                                            OMEGA_M);
         groupcat_ids_sorted[i] = groupcat_ids[mass_order[i]];
     }
 }
@@ -1025,10 +1185,12 @@ GroupFinder<D,V>::run_once_obs(
 template class gf::GroupFinder<gf::Dist3D, gf::VelPeculiar3D>;
 // 6D: 3D positions, line-of-sight peculiar velocity
 template class gf::GroupFinder<gf::Dist3D, gf::VelPeculiar2D>;
- // 3D: 2D position (projected, not from Vincenty formula), line-of-sight velocity + Hubble flow
+ // 3D: 2D position (projected, not from Vincenty formula), line-of-sight peculiar velocity + Hubble flow
 template class gf::GroupFinder<gf::DistPerp2D, gf::VelTotal>;
-// 3D: 2D position from Vincenty formula, line-of-sight velocity + Hubble flow
+// 3D: 2D position from Vincenty formula, line-of-sight peculiar velocity + Hubble flow
 // Direct analog to observation group finder
 template class gf::GroupFinder<gf::DistProjectedRCTan, gf::VelTotal>;
-// For classifying observational data
+// For classifying observational data with comoving distance and peculiar velocity
 template class gf::GroupFinder<gf::DistObs, gf::VelObs>;
+// For classifying observational data with redshift, RA and Dec only
+template class gf::GroupFinder<gf::DistObs, gf::VelTotal>;

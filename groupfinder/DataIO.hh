@@ -43,7 +43,13 @@ struct SimInputData {
  */
 struct ConcentrationData {
     std::vector<double> halo_masses;
-    std::vector<double> concentration;
+    std::vector<double> redshifts;
+    std::vector<std::vector<double>> concentration;
+};
+
+struct RedshiftDistanceData {
+    std::vector<double> redshifts;
+    std::vector<double> distances;
 };
 
 /**
@@ -72,11 +78,13 @@ struct GroupFinderConfig {
     bool isocentral_reclassification_performed;
     bool velocity_cut_imposed;
     bool contrast_val;
+    bool use_comoving_distance;
     double box_size;
     double R_max;
     bool periodic;
     double B_scaling;
     double h;
+    double omega_M;
 };
 
 /**
@@ -114,6 +122,12 @@ public:
      * @return ConcentrationData structure
      */
     static ConcentrationData readConcentrationData(const std::string& filename);
+    /**
+     * @brief Read redshift-distance relation data from HDF5 file
+     * @param filename Path to HDF5 file
+     * @return RedshiftDistanceData structure
+     */
+    static RedshiftDistanceData readRedshiftDistanceData(const std::string& filename);
 
     /**
      * @brief Write group finder results to HDF5 file

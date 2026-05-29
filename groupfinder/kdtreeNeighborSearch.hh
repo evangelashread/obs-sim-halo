@@ -9,6 +9,7 @@ namespace gf {
 ABORIA_VARIABLE(id, IDType, "id")
 
 using Vec3 = std::array<double, 3>;
+using IDType = std::int64_t;
 
 class AboriaNeighborBuilder {
     using Particles_t = Aboria::Particles<std::tuple<id>,3,std::vector,Aboria::Kdtree>;

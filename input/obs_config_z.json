@@ -10,11 +10,11 @@
     "iso_reclass": true,
     "contrast": true,
     "box_size": null,
-    "R_max": 50.0,
+    "R_max": 350.0,
     "periodic": false,
-    "B_scaling": 0.25245648323565056,
+    "B_scaling": 0.14407466422750295,
     "h": 0.6774,
     "omega_M": 0.3089,
     "dim": 3,
-    "use_distance": true
+    "use_distance": false
 }

@@ -2,7 +2,7 @@
 
 A high-performance, halo-based galaxy group finding algorithm implemented in C++ with a Python interface, designed for consistent comparisons between observational and simulation data.
 
-**Note: this repository is still a work in progress.**
+Note: this repo is still being updated.
 
 ## Overview
 
@@ -16,13 +16,13 @@ This algorithm has been tested with [TNG50 data](https://www.tng-project.org/dat
 
 In the adaptation of the Yang et al. (2005) algorithm (density-contrast-based classification), the estimated worst-case time complexity is O(N^2) when a brute force search is used. For N=10^6, this particular algorithm runs in ~30 min on an Intel i7 13th gen core (Ubuntu) if the cutoff radius for the brute search exceeds the radius of the sample volume. The 6D classification is accelerated with the use of k-d trees, achieving approximately O(N log N) complexity. For N=10^6, the 6D algorithm runs in ~5 min.
 
-Note: the algorithm explicitly assumes z ~ 0. In later iterations, ObsSimHalo may be updated to account for redshift dependence.
+While initially designed for classification at z ~ 0, this can also handle survey or simulation data out to any redshift. Flat lambdaCDM is assumed.
 
 ### Observationally Consistent Classification
 
-This group finder can classify groups in simulated catalogs in a way that mimics observations. To do this, it reduces six-dimensional simulation data (3D position + 3D velocity) to three dimensions (RA-like, Dec-like, and line-of-sight velocity/distance). A reference subhalo (ideally a Milky Way analogue) must be specified to anchor the coordinate system.
+This group finder can classify groups in simulated catalogs in a way that mimics observations. To do this, it reduces six-dimensional simulation data (3D position + 3D velocity) to three dimensions (RA-like, Dec-like, and line-of-sight velocity/distance/redshift). A reference position (such as a Milky Way analogue) can be specified to anchor the coordinate system if different from (0,0,0).
 
-When using the density-contrast method, it's recommended to scale the parameter "B" to account for observational incompleteness. In the examples, "B" is set to the ratio of observed to simulated galaxy number densities at a given mass/luminosity limit.
+When using the density-contrast method, it's recommended to scale the parameter "B" if the galaxy population is known to be incomplete. In the examples, "B" is set to the ratio of observed to simulated galaxy number densities at a given mass/luminosity limit.
 
 ## Dependencies
 
@@ -52,36 +52,32 @@ Required packages:
 - colossus
 - astropy
 - scipy
+- pytest
 
 ## Installation
 
-1. **Clone the repository**:
+1. **Clone the repository, and install Python dependencies**:
    ```bash
-   git clone https://github.com/yourusername/obs-sim-halo.git
    cd obs-sim-halo
-   ```
-
-2. **Install Python dependencies**:
-   ```bash
    pip install -r requirements.txt
    ```
 
-3. **Configure C++ compilation**:
-   Edit the Makefile in the `groupfinder/` directory to set paths for:
+2. **Configure C++ compilation**:
+   This doesn't have a CMakeLists file at the moment, so after installing the C++ dependencies listed above, edit the Makefile in the `groupfinder/` directory to set paths for:
    - Aboria headers (`-I/path/to/Aboria/src`)
    - Include path (`-I/path/to/include/directory`)
    - HDF5 installation (if not in standard locations)
 
-4. **Build the C++ executables**:
+3. **Build the C++ executables**:
    ```bash
    cd groupfinder
    make obs  # For observational data processing
    make sim  # For simulation data processing
    ```
 
-5. **Run tests**
+4. **Run tests**
    ```
-   python3 tests/run_tests.py
+   pytest tests/test_groupfinder.py
    ```
    Run to ensure your installation is working.
 
@@ -91,13 +87,14 @@ Required packages:
 
 ```python
 from groupfinder_interface import GroupFinderInterface, ObservationalData, run_groupfinder
-from input import ConcentrationData
+from input import InterpolationData
 
 # Initialize interface
 interface = GroupFinderInterface()
 
 # Configure parameters
 interface.h = 0.7
+interface.omega_M = 0.3
 # ...
 
 # Write to JSON
@@ -105,15 +102,17 @@ interface.config('input/obs_config.json', obs=True)
 
 # Prepare data
 obs_data = ObservationalData(
-    positions=p_array,         # Spherical coordinates (Distance [Mpc], Dec [deg], RA [deg])
-    velocities=v_array,      # Velocity [km/s]
+    positions=p_array,         # Spherical coordinates (Distance [Mpc], Dec [deg], RA [deg]) OR (Redshift, Dec [deg], RA [deg])
+    velocities=v_array,      # Peculiar line-of-sight velocity [km/s] OR None if redshifts used
     masses=mass_array,     # Stellar masses [log10(M_sun)]
     ids=id_array          # Galaxy IDs
 )
 obs_data.write_to_hdf5('input/data/input_file.h5')
 
-# Generate halo-mass-concentration data for group finder
-ConcentrationData.generate_concentration_data(h=interface.h)
+# Generate halo-mass-concentration data and redshift-distance data for group finder
+# Note that you may have to adjust the cosmology manually in InterpolationData (this will be made configurable in a later update)
+InterpolationData.generate_concentration_data()
+InterpolationData.generate_z_dist_data()
 
 # Run group finder
 run_groupfinder('obs', 'input/data/input_file.h5', 'output_file.h5', 'input/obs_config.json')
@@ -130,8 +129,8 @@ sim_data = SimulationData(
     velocities=vel_array,     # [N, 3] Peculiar velocities [km/s]
     masses=mass_array,        # Stellar masses [log10(M_sun)]
     ids=id_array,            # Galaxy IDs
-    ref_positions=ref_pos,   # Reference position (e.g., MW analogue)
-    ref_velocities=ref_vel   # Reference velocity
+    ref_positions=ref_pos,   # Reference position (e.g., MW analogue); set to None if in observer frame
+    ref_velocities=ref_vel   # Reference velocity; set to None if already in observer frame
 )
 
 # Configure and run
@@ -143,17 +142,22 @@ run_groupfinder('sim', input_file(s), output_file(s), 'input/sim_config.json')
 
 ### Configuration Parameters
 
-Key parameters in configuration JSON files:
-
 - `R_h_group`: Satellites grouped if distance < R_h_group × R_h (default: 1.0)
 - `V_vir_group`: Satellites grouped if velocity < V_vir_group × V_vir (default: 3.0)
 - `R_h_iso`: Galaxy isolated if distance > R_h_iso × R_h (default: 2.0)
 - `V_vir_iso`: Galaxy isolated if velocity > V_vir_iso × V_vir (default: 3.0)
+- `h`: Dimensionless Hubble parameter, h = H0 / 100 km/s/Mpc (default: 0.6774)
+- `omega_M`: Matter density parameter at z=0
 - `sat_reclass`: Enable satellites to be reclassified after initial classification (default: true)
 - `iso_reclass`: Enable isolated galaxies to be reclassified after initial classification (default: true)
+- `vel_cut`: Include velocity in classification criteria, as opposed to positions only (default: true)
+- `tree_search`: Use a kdtree for efficient searching. Currently only supports 3D Cartesian positions (default: false)
 - `contrast`: Use density-contrast-based classification (default: true)
 - `B_scaling`: For use with density-contrast-based classification
-- `dim`: Data dimension - 3 for RA/Dec/line-of-sight velocity+distance, 6 for full 6D phase space
+- `dim`: Data dimension. 3 for RA/Dec/line-of-sight velocity+distance, 6 for full 6D phase space
+- `box_size`: Length of 3D simulation box. Not needed for observation config
+- `R_max`: Maximum search radius for brute force nearest neighbors search
+- `use_distance`: Relevant for observational mode. Whether to use comoving distance + peculiar velocity OR redshift only.
 
 ## Output
 
@@ -169,8 +173,8 @@ See `example_obs.py` and `example_sim.py` for complete working examples with use
 
 ## Contributions
 
-Contributions are welcome — please open an issue or create a pull request.
+Contributions are welcome — please open an issue or pull request.
 
 ## Citation
 
-Please cite Shread et al. 2026 (submitted; link coming soon) if you use this code in your research.
+If you use this code in your research, please cite [Shread et al. 2026](https://doi.org/10.3847/1538-4357/ae644c) as well as [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) and [Behroozi et al. 2019](https://doi.org/10.1093/mnras/stz1182).

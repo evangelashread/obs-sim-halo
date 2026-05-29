@@ -4,7 +4,7 @@
     "V_vir_group": 3.0,
     "R_h_iso": 2.0,
     "V_vir_iso": 3.0,
-    "vel_cut": true,
+    "vel_cut": false,
     "tree_search": false,
     "sat_reclass": true,
     "iso_reclass": true,
@@ -14,5 +14,7 @@
     "periodic": true,
     "B_scaling": 1.0,
     "h": 0.6774,
-    "dim": 3
+    "omega_M": 0.3089,
+    "dim": 3,
+    "use_distance": true
 }

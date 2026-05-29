@@ -14,5 +14,7 @@
     "periodic": true,
     "B_scaling": 1.0,
     "h": 0.6774,
-    "dim": 6
+    "omega_M": 0.3089,
+    "dim": 6,
+    "use_distance": true
 }

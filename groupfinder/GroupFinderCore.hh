@@ -16,8 +16,25 @@ using Vec3 = std::array<double,3>;
 using IDType = std::int64_t;
 
 struct BehrooziParams {
-    double M0=12.035, alpha=1.963, beta=0.482, 
-           delta=0.411, gamma=std::pow(10,-1.034), epsilon=-1.435;
+    double EPS_0 = -1.435,
+    EPS_A = 1.831,
+    EPS_LOGA = 1.368,
+    EPS_Z = -0.217,
+    M_0 = 12.035,
+    M_A = 4.556,
+    M_LOGA = 4.417,
+    M_Z = -0.731,
+    ALPHA_0 = 1.963,
+    ALPHA_A = -2.316,
+    ALPHA_LOGA = -1.732,
+    ALPHA_Z = 0.178,
+    BETA_0 = 0.482,
+    BETA_A = -0.841,
+    BETA_Z = -0.471,
+    DELTA_0 = 0.411,
+    GAMMA_0 = -1.034,
+    GAMMA_A = -3.100,
+    GAMMA_Z = -1.055;
 };
 
 struct SelectionCriteria {
@@ -38,10 +55,12 @@ inline constexpr double GF_H = GF_h*100.; // km/s/Mpc, can be defined from confi
 inline constexpr double GF_G = 4.30091727e-9; // Mpc (km/s)^2 / Msun
 inline constexpr double GF_BOX_SIZE = 35000./GF_h/1000.; // Mpc, can be defined from config
 inline constexpr double GF_C = 299792.458; // km/s
-inline constexpr double GF_P_CRIT = (3. * GF_H*GF_H) / (8. * M_PI * GF_G); // M_sun/Mpc^3
+inline constexpr double GF_OMEGA_M = 0.3089;
 
 HaloProps compute_halo_props(
-    double logMstar, const BehrooziParams& params = BehrooziParams(), double p_crit = GF_P_CRIT, double G = GF_G
+    double z, double logMstar, double p_crit_0, 
+    const BehrooziParams& params = BehrooziParams(), 
+    double omega_m = GF_OMEGA_M
 );
 
 /* ################# Define distance methods ################ */
@@ -70,8 +89,7 @@ struct VelPeculiar2D {
                       const Vec3& v_c, const Vec3& v_s) const;
 };
 struct VelTotal {
-    double operator()(const Vec3& mw_c, const Vec3& mw_s,
-                      const Vec3& v_c, const Vec3& v_s, double H = GF_H) const;
+    double operator()(const double& z_c, const double& z_s) const;
 };
 struct VelObs {
     double operator()(const double& v_c, const double& v_s) const;
@@ -79,17 +97,20 @@ struct VelObs {
 
 struct TransformOutput {
     std::vector<double> rel_dists; // relative distances, projected or perpendicular
-    std::vector<double> rel_vels;   // relative LOS velocity
-    std::vector<double> R_cen;    // distance to central
+    std::vector<double> rel_vels;  // relative LOS velocity
+    std::vector<double> R_cen;  // distance to central
 };
 
 struct GroupFinderSettings {
+    int dim; // 3 or 6 for simulation data, 3 by default for observational data
     bool obs; // True if observational data, false if simulation data
     bool vel_cut; // True or false
     bool tree_search; // True or false
     bool sat_reclass; // True or false
     bool iso_reclass; // True or false
     bool contrast; // True or false
+    bool use_distance; // True if using distance and peculiar velocity for obs classification, False if using redshift and velocity for obs classification
+                        // This is generally always true for simulation data, since redshifts can be computed from distances and velocities in this code
 };
 
 class AboriaNeighborBuilder; // Forward declare the kd tree builder class
@@ -98,14 +119,20 @@ template<class DistMethod, class VelMethod>
 class GroupFinder {
 public:
     GroupFinder(SelectionCriteria s, GroupFinderSettings cfg, double box_size = GF_BOX_SIZE, 
-                double H0 = GF_H, bool pbc = true)
-                : sel(s), config(cfg), L(box_size), H(H0), periodic(pbc) {}
+                double H0 = GF_H, double OMEGA_M0 = GF_OMEGA_M, bool pbc = true)
+                : sel(s), config(cfg), L(box_size), H(H0), OMEGA_M(OMEGA_M0), periodic(pbc) {}
 
     ~GroupFinder();
 
-    void set_conc_table(std::vector<double> M_arr, std::vector<double> c_array);
+    void set_conc_table(std::vector<double> M_arr, std::vector<std::vector<double>> c_array, std::vector<double> redshift);
     
-    double c_from_M(double M) const;
+    double c_from_M(double M, double z) const;
+
+    void set_z_dist_table(std::vector<double> z_arr, std::vector<double> D_arr);
+
+    double z_from_D(double d) const;
+
+    double D_from_z(double z) const;
 
     std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>>
     run_once(
@@ -129,22 +156,23 @@ public:
     SelectionCriteria sel;  // selection criteria for groups and isolated centrals
     GroupFinderSettings config;
 private:
-    double L, H;
+    double L, H, OMEGA_M;
     bool periodic;
     std::vector<IDType> groupcat_ids_sorted; // sorted groupcat ids
-    std::vector<double> masses_sorted;       // sorted masses in log_10 solar masses
+    std::vector<double> masses_sorted;  // sorted masses in log_10 solar masses
     std::vector<Vec3> positions_sorted; // sorted 3D cartesian/spherical positions
     std::vector<Vec3> velocities_sorted; // sorted 3D velocities
     std::vector<double> velocities_sorted_obs;
-    std::vector<Vec3> MWcoords;      // sorted minimal-image of each position relative to the MW position
-    std::vector<int> mass_order;    // sorted indices by descending mass
-    std::vector<IDType> group_label;   // local group labels (central local index)
+    std::vector<Vec3> MWcoords;  // sorted minimal-image of each position relative to the MW position
+    std::vector<int> mass_order;  // sorted indices by descending mass
+    std::vector<IDType> group_label; // local group labels (central local index)
     std::vector<int> classification; // 0 = group central, 1 = isolated central, 2 = satellite
+    std::vector<double> total_redshifts;
 
     std::vector<IDType> local_ids; // local indices [0, N-1] into sorted arrays
 
-    DistMethod dist_method;     // desired method for computing relative distances
-    VelMethod vel_method;       // desired method for computing relative velocities
+    DistMethod dist_method; // desired method for computing relative distances
+    VelMethod vel_method;  // desired method for computing relative velocities
 
     // function for group classification
     std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>>
@@ -174,8 +202,12 @@ private:
 
     std::array<double,2> density_contrast(int local_c_id, double trans_dist, double rel_vel);
 
-    std::vector<double> tab_logM_c_;
-    std::vector<double> tab_logc_;
+    std::vector<double> tab_logM_c_; // log mass
+    std::vector<std::vector<double>> tab_logc_;  // log concentration
+    std::vector<double> tab_z_c_; // redshifts
+
+    std::vector<double> tab_z_D_; // redshifts
+    std::vector<double> tab_D_; // comoving distances
 };
 }
 

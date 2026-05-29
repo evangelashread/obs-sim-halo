@@ -11,42 +11,108 @@ from scipy.optimize import fsolve
 from pathlib import Path
 import os
 import sys
+import astropy.cosmology
+from astropy.cosmology import z_at_value
+from astropy import units as u
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from groupfinder_interface import SimulationData, ObservationalData
 
+cosmo = astropy.cosmology.Planck15
+
 class GroupFinderTest:
-    def __init__(self, box_size, h):
+    def __init__(self, box_size, h, omega_M):
         self.box_size = box_size
         self.h = h
+        self.omega_M = omega_M
         self.G = 4.3009172706e-9 # Mpc (km/s)^2 Msun^{-1}
         self.mass = None
-        self.p_crit = (3 * (h*100)**2) / (8 * np.pi * (4.3009172706e-9))
-        self.behroozi_params = dict(M0=12.035, alpha=1.963, beta=0.482,
-                                    delta=0.411, gamma=10**(-1.034), epsilon=-1.435)
+        self.p_crit_0 = (3 * (h*100)**2) / (8 * np.pi * (4.3009172706e-9))
         # Predefined parameters for satellite generation
-        # In further versions, these will be made configurable
+        # In further versions, these should be made configurable
         self.R_h_group = 1.0
         self.R_h_iso = 2.0
         self.V_vir_group = 3.0
         self.V_vir_iso = 3.0
-
-    def central_mass(self, mass):
-        self.mass = mass
+        self.behroozi_params = {
+            "EPS_0": -1.435,
+            "EPS_A": 1.831,
+            "EPS_LOGA": 1.368,
+            "EPS_Z": -0.217,
+            "M_0": 12.035,
+            "M_A": 4.556,
+            "M_LOGA": 4.417,
+            "M_Z": -0.731,
+            "ALPHA_0": 1.963,
+            "ALPHA_A": -2.316,
+            "ALPHA_LOGA": -1.732,
+            "ALPHA_Z": 0.178,
+            "BETA_0": 0.482,
+            "BETA_A": -0.841,
+            "BETA_Z": -0.471,
+            "DELTA_0": 0.411,
+            "GAMMA_0": -1.034,
+            "GAMMA_A": -3.100,
+            "GAMMA_Z": -1.055,
+        }
         
-    # Use Behroozi et al. (2019) SMHM relation
-    def behroozi_SMHM(self, x):
-        p = self.behroozi_params
-        return (p['M0'] + p['epsilon']
-                - np.log10(10**(-p['alpha'] * x) + 10**(-p['beta'] * x))
-                + p['gamma'] * np.exp(-0.5 * (x / p['delta'])**2)
-                - self.mass)
+    def p_crit(self, z):
+        return self.p_crit_0 * (self.omega_M * (1 + z)**3 + (1 - self.omega_M))
+
+    def behroozi_SMHM(self, x, z, Mstar_log):
+        """
+        Behroozi et al. 2019 SMHM relation
+
+        Adapted from velociraptor python code
+        """
+        params = self.behroozi_params
+        a = 1.0 / (1.0 + z)
+        a1 = a - 1.0
+        lna = np.log(a)
+
+        zparams = {}
+
+        zparams["m_1"] = (
+            params["M_0"]
+            + a1 * params["M_A"]
+            - lna * params["M_LOGA"]
+            + z * params["M_Z"]
+        )
+        zparams["eps"] = (
+            params["EPS_0"]
+            + a1 * params["EPS_A"]
+            - lna * params["EPS_LOGA"]
+            + z * params["EPS_Z"]
+        )
+        zparams["alpha"] = (
+            params["ALPHA_0"]
+            + a1 * params["ALPHA_A"]
+            - lna * params["ALPHA_LOGA"]
+            + z * params["ALPHA_Z"]
+        )
+        zparams["beta"] = params["BETA_0"] + a1 * params["BETA_A"] + z * params["BETA_Z"]
+        zparams["delta"] = params["DELTA_0"]
+        zparams["gamma"] = 10 ** (
+            params["GAMMA_0"] + a1 * params["GAMMA_A"] + z * params["GAMMA_Z"]
+        )
+
+        x2 = x / zparams["delta"]
+        logmstar = (
+            zparams["eps"] + zparams["m_1"]
+            - np.log10(10 ** (-zparams["alpha"] * x) + 10 ** (-zparams["beta"] * x))
+            + zparams["gamma"] * np.exp(-0.5 * (x2 * x2))
+        )
+        
+        return logmstar - Mstar_log
     
-    def halo_props(self, log10_stellar):
-        self.central_mass(log10_stellar)
-        sol = fsolve(self.behroozi_SMHM, 1.0)[0]
-        M_h = 10 ** (sol + 12.035)
-        R_h = (3 * M_h / (4 * np.pi * 200 * self.p_crit)) ** (1/3)
+    def halo_props(self, z, Mstar_log):
+        sol = fsolve(self.behroozi_SMHM, x0=3.0, args=(z, Mstar_log))[0]
+        a = 1.0 / (1.0 + z)
+        a1 = a - 1.0
+        lna = np.log(a)
+        M1 = self.behroozi_params["M_0"] + self.behroozi_params["EPS_0"] + a1 * self.behroozi_params["EPS_A"] - lna * self.behroozi_params["EPS_LOGA"] + z * self.behroozi_params["EPS_Z"]
+        M_h = 10 ** (sol + M1)
+        R_h = (3 * M_h / (4 * np.pi * 200 * self.p_crit(z))) ** (1/3)
         v_vir = np.sqrt(self.G * M_h / R_h)
         return M_h, R_h, v_vir
     
@@ -84,7 +150,8 @@ class GroupFinderTest:
     def generate_satellites(self, log10_stellar_c, center_pos, center_vlos, N, sim=False):
         if N == 0:
             return np.empty((0,3)), np.empty((0,)), np.empty((0,))
-        _, R_h, v_vir = self.halo_props(log10_stellar_c)
+        z_c = z_at_value(cosmo.comoving_distance, np.linalg.norm(center_pos) * u.Mpc).value
+        _, R_h, v_vir = self.halo_props(z_c, log10_stellar_c)
         
         # Generate N total satellites
         cos_t = np.random.uniform(-1., 1., N)
@@ -162,6 +229,7 @@ class GroupFinderTest:
         radii = np.zeros(n_groups)
         vvirs = np.zeros(n_groups)
         r_cen = np.random.uniform(0.2*radius, 0.8*radius, n_groups)
+        z_cen = z_at_value(cosmo.comoving_distance, r_cen * u.Mpc).value
         
         # Place groups equidistantly on a circle
         for i in range(n_groups):
@@ -172,7 +240,7 @@ class GroupFinderTest:
             pos[i, 2] = r_cen[i] * np.cos(theta) # z is free parameter
             
             # Generate halo properties
-            _, R_h, v_vir = self.halo_props(masses[i])
+            _, R_h, v_vir = self.halo_props(z_cen[i], masses[i])
             radii[i] = R_h
             vvirs[i] = v_vir
             if sim:
@@ -192,11 +260,11 @@ class GroupFinderTest:
             N_sat[gid] += 1
         return N_sat
         
-    def build_obs_catalog(self, n_groups=3, n_sats=20):
+    def build_obs_catalog(self, n_groups=3, n_sats=20, redshift=False):
         """
         Build a data structure matching the observational GroupFinder input schema:
-        positions: list[[dist, dec, ra]] in Mpc, degrees
-        velocities: list[v_los] in km/s
+        positions: list[[dist, dec, ra]] in Mpc, degrees or (redshift, degrees)
+        velocities: list[v_los] in km/s (written to [0.] if in redshift mode)
         masses: list[log10 M*]
         ids: list[int]
         group_indices: list[list[int]]
@@ -248,6 +316,13 @@ class GroupFinderTest:
                 cm = all_masses[group[0]]
                 assert all(all_masses[s] < cm - 1e-6 for s in group[1:])
 
+        if redshift:
+            all_sph = np.array(all_sph)
+            dists = all_sph[:,0]
+            zs = z_at_value(cosmo.comoving_distance, dists*u.Mpc).value
+            all_sph[:,0] = zs
+            all_vel = [0.]
+            all_sph = all_sph.tolist()
         data = {
             "masses": all_masses,
             "positions": all_sph,
@@ -257,7 +332,7 @@ class GroupFinderTest:
         }
         return data
 
-    def build_sim_catalog(self, groups_per_mw=3, n_sats=20):
+    def build_sim_catalog(self, groups_per_mw=3, n_sats=20, origin=False):
         """
         Build a data structure matching the simulated GroupFinder input schema:
         mass_vec: list[log10 M*]
@@ -279,8 +354,12 @@ class GroupFinderTest:
         masses_cen, pos_cen, v_cen, radii, vvir, groups_per_mw = self.place_centrals(n_groups=groups_per_mw, radius=self.box_size/2, sim=True)
         N_sat = self.assign_satellite_counts(n_groups=groups_per_mw, n_sats=n_sats)
         
-        MW_ID_pos_vec = np.random.uniform(-self.box_size/2, self.box_size/2, 3).tolist()
-        MW_ID_vel_vec = np.random.uniform(-50., 50., 3).tolist()
+        if origin:
+            MW_ID_pos_vec = [0., 0., 0.]
+            MW_ID_vel_vec = [0., 0., 0.]
+        else:
+            MW_ID_pos_vec = np.random.uniform(-self.box_size/2, self.box_size/2, 3).tolist()
+            MW_ID_vel_vec = np.random.uniform(-50., 50., 3).tolist()
 
         for i in range(groups_per_mw):
             group = []
@@ -349,11 +428,11 @@ class GroupFinderTest:
                     f.create_dataset(name=key, data=value_array, dtype=dt)
         print(f"Input data written to: {outfile}")
 
-    def create_test_data(self, type: str, outfile: str, n_groups=3, n_sats=20):
+    def create_test_data(self, type: str, outfile: str, n_groups=3, n_sats=20, origin=False, redshift=False):
         if type == "obs":
-            data = self.build_obs_catalog(n_groups=n_groups, n_sats=n_sats)
+            data = self.build_obs_catalog(n_groups=n_groups, n_sats=n_sats, redshift=redshift)
         elif type == "sim":
-            data = self.build_sim_catalog(groups_per_mw=n_groups, n_sats=n_sats)
+            data = self.build_sim_catalog(groups_per_mw=n_groups, n_sats=n_sats, origin=origin)
         else:
             raise ValueError("Type must be 'obs' or 'sim'")
 

@@ -1,5 +1,5 @@
 from groupfinder_interface import GroupFinderInterface, SimulationData, run_groupfinder
-from input import ConcentrationData
+from input import InterpolationData
 from tests.gen_data import GroupFinderTest
 import h5py
 import numpy as np
@@ -18,12 +18,13 @@ interface.sat_reclass_val = True
 interface.iso_reclass_val = True
 interface.B_scaling = 1.
 interface.h = 0.6774
+interface.omega_M = 0.3089
 interface.periodic = True
 interface.box_size = 35000./interface.h/1000.  # in Mpc
 interface.R_max = interface.box_size * np.sqrt(3)/2.  # half the box diagonal: max possible distance in periodic box
 
 # Generate simulation test data
-test = GroupFinderTest(box_size=interface.box_size, h=interface.h)
+test = GroupFinderTest(box_size=interface.box_size, h=interface.h, omega_M=interface.omega_M)
 test.create_test_data(type="sim", outfile="input/data/sim_data.h5", n_groups=3)
 
 with h5py.File("input/data/sim_data.h5", "r") as f:
@@ -46,6 +47,9 @@ print("Loaded simulation data.")
 interface.config("input/sim_config.json", obs=False)
 
 # run halo concentration data generation
-ConcentrationData.generate_concentration_data(h=interface.h)
+InterpolationData.generate_concentration_data(max_z = 0.02)
+
+# run redshift-distance data generation
+InterpolationData.generate_z_dist_data(max_z = 0.02)
 
 run_groupfinder('sim', 'input/data/sim_data.h5', 'sim_gf_result.h5', 'input/sim_config.json')
