@@ -109,24 +109,49 @@ int main(int argc, char* argv[]) {
         use_distance
     };
 
+    std::vector<std::vector<IDType>> group_indices;
+    std::vector<IDType> central_ids;
+    std::vector<double> halo_masses;
+
     // Run group finder
-    GroupFinder<DistObs, VelObs> finder(sel, config, box_size, h_val*100., omega_M, periodic);
-    finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
-    finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
-  
-    auto result = finder.run_once_obs(
-        galaxy_data.masses, 
-        galaxy_data.ids, 
-        galaxy_data.positions, 
-        galaxy_data.velocities, 
-        R_max, 
-        B_scaling, 
-        periodic
-    );
-    
-    auto group_indices = std::get<0>(result);
-    auto central_ids = std::get<1>(result);
-    auto halo_masses = std::get<2>(result);
+    if (use_distance) {
+        GroupFinder<DistObs, VelObs> finder(sel, config, box_size, h_val*100., omega_M, periodic);
+        finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+        finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
+
+        auto result = finder.run_once_obs(
+            galaxy_data.masses, 
+            galaxy_data.ids, 
+            galaxy_data.positions, 
+            galaxy_data.velocities, 
+            R_max, 
+            B_scaling, 
+            periodic
+        );
+
+        group_indices = std::get<0>(result);
+        central_ids = std::get<1>(result);
+        halo_masses = std::get<2>(result);
+
+    } else { // the zeroth column in positions is assumed to be redshifts
+        GroupFinder<DistObs, VelTotal> finder(sel, config, box_size, h_val*100., omega_M, periodic);
+        finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+        finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
+
+        auto result = finder.run_once_obs(
+            galaxy_data.masses, 
+            galaxy_data.ids, 
+            galaxy_data.positions, 
+            galaxy_data.velocities, 
+            R_max, 
+            B_scaling, 
+            periodic
+        );
+
+        group_indices = std::get<0>(result);
+        central_ids = std::get<1>(result);
+        halo_masses = std::get<2>(result);
+    }
 
     // Compute group statistics
     int total_groups = 0;

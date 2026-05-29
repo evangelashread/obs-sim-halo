@@ -112,8 +112,8 @@ class Tests:
             test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"))
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
-                obs_positions = np.array(f['positions'][:]) # already in spherical coords (dist [Mpc], ra [deg], dec [deg])
-                obs_velocities = np.array(f['velocities'][:]) # heliocentric velocities [km/s]
+                obs_positions = np.array(f['positions'][:]) # already in spherical coords (dist [Mpc], ra [rad], dec [rad])
+                obs_velocities = np.array(f['velocities'][:]) # heliocentric peculiar velocities [km/s]
                 obs_masses = np.array(f['masses'][:]) # stellar masses [log10(M_sun)]
                 obs_ids = np.array(f['ids'][:])
                 obs_group_indices = np.array(f['group_indices'][:])
@@ -130,7 +130,7 @@ class Tests:
             with h5py.File(os.path.join(parent_dir, "input/data/sim_data.h5"), "r") as f:
                 sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]
                 sim_velocities = np.array(f['velocities'][:]) # in physical Cartesian box coords [km/s]
-                sim_masses = np.array(f['masses'][:]) # in physical stellar masses [log10(M_sun)]
+                sim_masses = np.array(f['masses'][:]) # in physical log stellar masses [log10(M_sun)]
                 sim_ids = np.array(f['ids'][:])
                 sim_ref_positions = np.array(f['ref_positions'][:])
                 sim_ref_velocities = np.array(f['ref_velocities'][:])
@@ -211,7 +211,7 @@ class Tests:
         passed_percentage = passed_sim6D/n_tests
         assert passed_percentage == 1.0, "Overall sim_config_6D test FAILED."
         
-    def test_obs_redshift(self, n_tests=100):
+    def test_obs_redshift_yang05(self, n_tests=100):
         passed_obs = 0
         # Test obs_config
         print("Running observational tests with redshifts...")
@@ -239,8 +239,8 @@ class Tests:
             test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
-                obs_positions = np.array(f['positions'][:]) # already in (redshift, ra [deg], dec [deg])
-                obs_masses = np.array(f['masses'][:]) # stellar masses [log10(M_sun)]
+                obs_positions = np.array(f['positions'][:]) # already in (redshift, ra [rad], dec [rad])
+                obs_masses = np.array(f['masses'][:]) # log stellar masses [log10(M_sun)]
                 obs_ids = np.array(f['ids'][:])
                 obs_group_indices = np.array(f['group_indices'][:])
             obs_data = ObservationalData(positions=obs_positions,
@@ -255,7 +255,7 @@ class Tests:
             with h5py.File(os.path.join(parent_dir, "input/data/sim_data.h5"), "r") as f:
                 sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]
                 sim_velocities = np.array(f['velocities'][:]) # in physical Cartesian box coords [km/s]
-                sim_masses = np.array(f['masses'][:]) # in physical stellar masses [log10(M_sun)]
+                sim_masses = np.array(f['masses'][:]) # in physical log stellar masses [log10(M_sun)]
                 sim_ids = np.array(f['ids'][:])
 
             sim_data = SimulationData(positions=sim_positions,

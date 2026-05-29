@@ -24,7 +24,7 @@ test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interfac
 test.create_test_data(type="obs", outfile="input/data/test_obs_data.h5")
 
 with h5py.File("input/data/test_obs_data.h5", "r") as f:
-    obs_positions = np.array(f['positions'][:]) # already in spherical coords (dist [Mpc], dec [deg], RA [deg])
+    obs_positions = np.array(f['positions'][:]) # already in spherical coords (dist [Mpc], dec [rad], RA [rad])
     obs_velocities = np.array(f['velocities'][:]) # heliocentric velocities [km/s]
     obs_masses = np.array(f['masses'][:]) # stellar masses [log10(M_sun)]
     obs_ids = np.array(f['ids'][:])

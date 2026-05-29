@@ -28,9 +28,9 @@ test = GroupFinderTest(box_size=interface.box_size, h=interface.h, omega_M=inter
 test.create_test_data(type="sim", outfile="input/data/sim_data.h5", n_groups=3)
 
 with h5py.File("input/data/sim_data.h5", "r") as f:
-    sim_positions = f['positions'][:] # in physical Cartesian box coords [Mpc]
+    sim_positions = f['positions'][:] # in physical comoving Cartesian box coords [Mpc]
     sim_velocities = f['velocities'][:] # in physical Cartesian box coords [km/s]
-    sim_masses = f['masses'][:] # in physical stellar masses [log10(M_sun)]
+    sim_masses = f['masses'][:] # in physical log stellar masses [log10(M_sun)]
     sim_ids = f['ids'][:]
     sim_ref_positions = f['ref_positions'][:]
     sim_ref_velocities = f['ref_velocities'][:]

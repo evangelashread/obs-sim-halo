@@ -7,10 +7,14 @@ namespace gf {
 inline std::vector<IDType> bruteforce_search(size_t central_id, const std::vector<Vec3>& all_positions,
                                          const std::vector<IDType>& cand_ids, double R_max, 
                                          double L, bool periodic = true, bool obs = false){
-    /* Candidate IDs are the indices into all_positions to consider.
+    /* 
+    Candidate IDs are the indices into all_positions to consider.
     For example, for satellite reclassification, we would use the local id of the satellite 
     as the central_id, and the local ids of the potential new central hosts for cand_ids.
-    Then all_positions should be positions_sorted. */
+    Then all_positions should be positions_sorted. 
+    If observations are in redshift mode, the code has already converted this to a comoving distance
+    by the time it hits 'bruteforce_search.'
+    */
 
     auto wrap = [L](double d){
         d -= L*std::round(d/L);

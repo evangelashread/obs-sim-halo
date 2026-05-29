@@ -102,7 +102,7 @@ interface.config('input/obs_config.json', obs=True)
 
 # Prepare data
 obs_data = ObservationalData(
-    positions=p_array,         # Spherical coordinates (Distance [Mpc], Dec [deg], RA [deg]) OR (Redshift, Dec [deg], RA [deg])
+    positions=p_array,         # Spherical coordinates (Distance [Mpc], Dec [rad], RA [rad]) OR (Redshift, Dec [rad], RA [rad]). Dec range: [-pi/2, pi/2], RA range: [0, 2pi)
     velocities=v_array,      # Peculiar line-of-sight velocity [km/s] OR None if redshifts used
     masses=mass_array,     # Stellar masses [log10(M_sun)]
     ids=id_array          # Galaxy IDs
@@ -125,7 +125,7 @@ from groupfinder_interface import SimulationData, run_groupfinder
 
 # Prepare simulation data
 sim_data = SimulationData(
-    positions=pos_array,      # [N, 3] Cartesian box positions [Mpc]
+    positions=pos_array,      # [N, 3] Comoving cartesian box positions [Mpc]
     velocities=vel_array,     # [N, 3] Peculiar velocities [km/s]
     masses=mass_array,        # Stellar masses [log10(M_sun)]
     ids=id_array,            # Galaxy IDs

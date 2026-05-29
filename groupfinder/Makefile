@@ -1,5 +1,5 @@
 CXX       := g++
-CXXFLAGS  := -I/path/to/Aboria/src -I/path/to/include/directory -O3 -std=c++17 -Wall -Wextra -march=native -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
+CXXFLAGS  := -I/path/to/Aboria/src -I/path/to/include/directory -O2 -std=c++17 -Wall -Wextra -march=native -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
 # Edit the first two -I flags to point to the Aboria (/path/to/Aboria/src) and include directories (/path/to/include/directory) on your system
 # Usually the include path is your home directory (~) or /usr/local/include
 

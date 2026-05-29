@@ -459,13 +459,12 @@ TransformOutput GroupFinder<D,V>::transform(size_t central_local, const std::vec
             }
         } 
     } else { // Observational data
-        double R_cen = 0., v_cen = 0., z_cen = 0.;
+        double z_cen = 0., v_cen = 0.;
+        double R_cen = positions_sorted[central_local][0];
         if (config.use_distance) {
-            R_cen = positions_sorted[central_local][0];
             v_cen  = velocities_sorted_obs[central_local];
         } else {
             z_cen = total_redshifts[central_local];
-            R_cen = D_from_z(z_cen);
         }
         const auto& Dec_cen = positions_sorted[central_local][1];
         const auto& RA_cen = positions_sorted[central_local][2];
@@ -881,7 +880,7 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
         }
         cand.clear();
     }
-    //outfile.close();
+    
     std::cout << reclassified << " isolated centrals reclassified as satellites\n";
     summarize("After isolated central classification", group_label);
 }
@@ -934,9 +933,9 @@ void GroupFinder<D,V>::initialize(const std::vector<double>& masses_unsorted,
         if (config.dim == 3) { // we are working in redshift space and need contribution from peculiar velocities
             // Get v along the line of sight
             double v_los = VelocityLOS(d, v);
-            double z_pec = v_los / gf::GF_C; // peculiar velocities are non-relativistic
+            double z_pec = v_los / gf::GF_C; // peculiar velocities are assumed non-relativistic
             total_redshifts[i] = (1 + cosmo_redshift)*(1 + z_pec) - 1.;
-        } else {
+        } else { // work in real space
             total_redshifts[i] = cosmo_redshift;
         }
 
@@ -981,13 +980,16 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
 
     for(size_t i = 0; i < N; ++i) {
         local_ids[i] = (IDType)i;
-        positions_sorted[i]  = positions_unsorted[mass_order[i]];
         masses_sorted[i] = masses_unsorted[mass_order[i]];
-        if (config.use_distance) { 
+        if (config.use_distance) { // need to calculate cosmological redshifts from comoving distance (peculiar velocity is separated)
+            positions_sorted[i]  = positions_unsorted[mass_order[i]]; // (r, dec, RA)
             velocities_sorted_obs[i] = velocities_los[mass_order[i]];
             total_redshifts[i] = z_from_D(positions_unsorted[mass_order[i]][0]);
-        } else {
-            total_redshifts[i] = positions_unsorted[mass_order[i]][0];
+        } else { // compute comoving distance from redshift (includes contribution from peculiar velocity; fully in redshift space)
+            total_redshifts[i] = positions_unsorted[mass_order[i]][0]; // z
+            positions_sorted[i][0] = D_from_z(positions_unsorted[mass_order[i]][0]);
+            positions_sorted[i][1] = positions_unsorted[mass_order[i]][1]; // copy dec
+            positions_sorted[i][2] = positions_unsorted[mass_order[i]][2]; // copy RA
         }
         halo_props[i] = compute_halo_props(total_redshifts[i],
                                             masses_unsorted[mass_order[i]],
