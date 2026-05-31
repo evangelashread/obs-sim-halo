@@ -19,9 +19,7 @@ from input import InterpolationData
 def suppress_output():
     """Suppress stdout and keep terminal clean"""
     sys.stdout.flush()
-    # Save original file descriptors
     old_stdout = os.dup(1)
-    # Redirect to devnull
     devnull = os.open(os.devnull, os.O_WRONLY)
     os.dup2(devnull, 1)
     os.close(devnull)
@@ -41,10 +39,8 @@ class Tests:
     
     def test_sim_yang05(self, n_tests=100):
         passed_sim = 0
-        # Pause terminal output for clarity
         print("Running sim_config tests...")
         old_stdout = suppress_output()
-
         interface_sim = GroupFinderInterface()
         runner = GroupFinderRunner()
 
@@ -78,8 +74,7 @@ class Tests:
 
             os.remove(os.path.join(parent_dir, "input/data/sim_data.h5"))
             os.remove(os.path.join(parent_dir, "sim_gf_result.h5"))
-
-        # Resume terminal output
+            
         restore_output(old_stdout)
         print(f"{passed_sim} out of {n_tests} tests passed.")
         passed_percentage = passed_sim/n_tests
@@ -87,7 +82,6 @@ class Tests:
 
     def test_obs_yang05(self, n_tests=100):
         passed_obs = 0
-        # Test obs_config
         print("Running obs_config tests...")
         old_stdout = suppress_output()
         for i in range(n_tests):
@@ -142,7 +136,6 @@ class Tests:
                                     ref_positions=sim_ref_positions,
                                     ref_velocities=sim_ref_velocities)
                 
-            # Calculate B parameter for data set A
             interface.calculate_B(sim_data=sim_data,
                                 obs_data=obs_data,
                                 mass_limit=6.0,
@@ -166,7 +159,6 @@ class Tests:
         assert passed_percentage >= 0.95, "Overall obs_config test FAILED."
 
     def test_sim_6D(self, n_tests=100):
-        # Finaly, test the sim_6D case
         passed_sim6D = 0
         print("Running sim_6D tests...")
         old_stdout = suppress_output()
@@ -205,7 +197,6 @@ class Tests:
             os.remove(os.path.join(parent_dir, "input/data/sim_data.h5"))
             os.remove(os.path.join(parent_dir, "sim_gf_result.h5"))
 
-        # Resume terminal output
         restore_output(old_stdout)
         print(f"{passed_sim6D} out of {n_tests} tests passed.")
         passed_percentage = passed_sim6D/n_tests
@@ -213,8 +204,7 @@ class Tests:
         
     def test_obs_redshift_yang05(self, n_tests=100):
         passed_obs = 0
-        # Test obs_config
-        print("Running observational tests with redshifts...")
+        print("Running tests of 'redshift survey' observational mode...")
         old_stdout = suppress_output()
         for i in range(n_tests):
             # Reconfigured each time due to B scaling calculation
@@ -263,7 +253,6 @@ class Tests:
                                     masses=sim_masses,
                                     ids=sim_ids)
                 
-            # Calculate B parameter for data set A
             interface.calculate_B(sim_data=sim_data,
                                 obs_data=obs_data,
                                 mass_limit=6.0,

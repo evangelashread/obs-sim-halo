@@ -17,7 +17,7 @@ std::vector<T> HDF5Handler::readDataset1D(H5::DataSet& dataset, const H5::DataTy
     return data;
 }
 
-// Template implementations for reading 2D datasets (for arrays)
+// Implementations for reading 2D datasets (for arrays)
 // e.g. MW positions in run_groupfinder_sim.cpp, or RA/Dec positions in run_groupfinder_obs.cpp
 template<typename T, std::size_t N>
 std::vector<std::array<T, N>> HDF5Handler::readDataset2D(H5::DataSet& dataset, const H5::DataType& predType) {
@@ -34,7 +34,7 @@ std::vector<std::array<T, N>> HDF5Handler::readDataset2D(H5::DataSet& dataset, c
     return data;
 }
 
-// Template implementations for writing 1D datasets
+// Writing 1D datasets
 // e.g. central ids in run_groupfinder_obs.cpp
 template<typename T>
 void HDF5Handler::writeDataset1D(
@@ -59,7 +59,7 @@ std::vector<std::vector<T>> HDF5Handler::readJagged1D(
     hsize_t dims[1];
     dataspace.getSimpleExtentDims(dims, nullptr);
     
-    // Working with variable-length datatype
+    // variable-length data
     H5::VarLenType vl_type(&predType);
     std::vector<hvl_t> vl_data(dims[0]);
     dataset.read(vl_data.data(), vl_type);
@@ -73,7 +73,6 @@ std::vector<std::vector<T>> HDF5Handler::readJagged1D(
     
     // Free variable-length memory
     dataset.vlenReclaim(vl_data.data(), vl_type, dataspace);
-    
     return result;
 }
 
@@ -104,7 +103,6 @@ std::vector<std::vector<std::array<T, N>>> HDF5Handler::readJagged2D(
         std::memcpy(result[i].data(), vl_data[i].p, n_elements * sizeof(std::array<T, N>));
     }
     dataset.vlenReclaim(vl_data.data(), vl_type, dataspace);
-    
     return result;
 }
 
@@ -116,17 +114,13 @@ void HDF5Handler::writeJagged1D(
     const std::string& name,
     const std::vector<std::vector<T>>& data,
     const H5::DataType& predType) {
-    
-    // Create variable-length datatype
+
     H5::VarLenType vl_type(&predType);
-    
-    // Create dataspace for outer vector
     hsize_t dims[1] = {data.size()};
     H5::DataSpace dataspace(1, dims);
     
     H5::DataSet dataset = group.createDataSet(name, vl_type, dataspace);
-    
-    // Prepare variable-length data
+
     std::vector<hvl_t> vl_data(data.size());
     for (size_t i = 0; i < data.size(); ++i) {
         vl_data[i].len = data[i].size();
@@ -341,7 +335,6 @@ void HDF5Handler::writeResults(
                                                               dataspace);
             dataset.write(sel_data, H5::PredType::NATIVE_DOUBLE);
             
-            // Add named attributes to explain the data
             H5::StrType str_type(H5::PredType::C_S1, 256);
             H5::Attribute attr_names = dataset.createAttribute("names", str_type, 
                                                                 H5::DataSpace(H5S_SCALAR));
@@ -369,7 +362,7 @@ void HDF5Handler::writeResults(
                                     H5::PredType::NATIVE_HBOOL, 
                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
                                                                       &config.use_comoving_distance);
-        // Write selection criteria values as attributes
+        // Write selection criteria values as attributes (for redundancy)
         config_group.createAttribute("R_h_group", H5::PredType::NATIVE_DOUBLE, 
                                      H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
                                                                        &config.R_h_group);
@@ -402,7 +395,7 @@ void HDF5Handler::writeResults(
                                      H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE,
                                                                        &config.omega_M);
         
-        // Create statistics group
+        // Output statistics group
         H5::Group stats_group(file.createGroup("/statistics"));
 
         std::int64_t stats_data[] = {stats.total_groups, stats.isolated_count, stats.group_count};

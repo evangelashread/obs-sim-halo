@@ -10,14 +10,14 @@ import numpy as np
 @dataclass
 class SimulationData:
     """Container for simulation galaxy data."""
-    positions: np.ndarray  # array of shape (n_galaxies, 3) in Mpc in comoving cartesian box coordinates
-    velocities: np.ndarray  # array of shape (n_galaxies, 3) in km/s
-    masses: np.ndarray  # array of shape (n_galaxies,) in log10(M_sun)
-    ids: np.ndarray  # array of shape (n_galaxies,) unique identifiers
-    ref_positions: np.ndarray = None  # Shape: (n_ref, 3) in Mpc in comoving cartesian box coordinates
-    ref_velocities: np.ndarray = None  # Shape: (n_ref, 3) in km/s
-    ref_ids: np.ndarray = None  # optional, shape: (n_ref,) unique identifiers for reference points
-    group_indices: np.ndarray = None  # optional, shape: (n_galaxies,) group indices if pre-grouped
+    positions: np.ndarray  # shape (n_galaxies, 3) in Mpc in comoving cartesian box coordinates
+    velocities: np.ndarray  # shape (n_galaxies, 3) in km/s
+    masses: np.ndarray  # shape (n_galaxies,) in log10(M_sun)
+    ids: np.ndarray  # shape (n_galaxies,) unique ids
+    ref_positions: np.ndarray = None  # Shape: (1, 3) in Mpc in comoving cartesian box coordinates
+    ref_velocities: np.ndarray = None  # Shape: (1, 3) in km/s
+    ref_ids: np.ndarray = None  # optional, shape: (n_ref,) ids for the reference point(s)
+    group_indices: np.ndarray = None  # optional, shape: (n_galaxies,) grouped galaxy ids if pre-grouped
     
     def __post_init__(self):
         """Validate that all arrays have consistent lengths and expected shapes."""
@@ -61,10 +61,10 @@ class ObservationalData:
     If comoving distance is provided, then the user must also provide peculiar velocities.
     """
     masses: np.ndarray  # Shape: (n_observed,) in log10(M_sun)
-    ids: np.ndarray  # Shape: (n_observed,) unique identifiers
+    ids: np.ndarray  # Shape: (n_observed,) unique ids
     positions: np.ndarray  # Shape: (n_observed, 3) in spherical coordinates (distance, Dec, RA) OR (redshift, Dec, RA)
     velocities: np.ndarray = None  # Shape: (n_observed,) for line-of-sight/heliocentric velocities
-    group_indices: np.ndarray = None  # optional, shape: (n_observed,) group indices if pre-grouped
+    group_indices: np.ndarray = None  # optional, shape: (n_observed,) galaxy group ids if pre-grouped
 
     def __post_init__(self):
         """Validate that all arrays have consistent lengths and expected shapes."""
@@ -114,15 +114,15 @@ class GroupFinderInterface:
     def __init__(self):
         self.dim = 3 # either 3D based (for 2 RA/dec + velocity/redshift/distance) or 6D based (for x/y/z + vx/vy/vz)
         # relevant for simulation data only
-        self.R_h_group_val = 1.0
-        self.V_vir_group_val = 3.0
-        self.R_h_iso_val = 2.0
-        self.V_vir_iso_val = 3.0
-        self.vel_cut_val = True # classify based on peculiar velocity (not applicable for density-contrast-based classification)
-        self.tree_search_val = False
-        self.sat_reclass_val = True
-        self.iso_reclass_val = True
-        self.contrast_val = True
+        self.R_h_group = 1.0
+        self.V_vir_group = 3.0
+        self.R_h_iso = 2.0
+        self.V_vir_iso = 3.0
+        self.vel_cut = True # classify based on peculiar velocity (not applicable for density-contrast-based classification)
+        self.tree_search = False
+        self.sat_reclass = True
+        self.iso_reclass = True
+        self.contrast = True
         self.box_size = 50.0  # Example box size in Mpc; not required for observational data
         self.R_max = 50.0 * np.sqrt(3) / 2.0  # Example max distance for search
         self.periodic = True  # Periodic boundary conditions
@@ -134,13 +134,13 @@ class GroupFinderInterface:
         # parse args 
         if manual is True:
             print("Group Finder Configuration")
-            self.R_h_group_val = float(input(f'R_h_group (satellites grouped if d < R_h_group * R_h) [current={self.R_h_group_val}]: ') or self.R_h_group_val)
-            self.V_vir_group_val = float(input(f'V_vir_group (satellites grouped if v < V_vir_group * V_vir) [current={self.V_vir_group_val}]: ') or self.V_vir_group_val)
-            self.R_h_iso_val = float(input(f'R_h_iso (galaxy is isolated if d > R_h_iso * R_h) [current={self.R_h_iso_val}]: ') or self.R_h_iso_val)
-            self.V_vir_iso_val = float(input(f'V_vir_iso (galaxy is isolated if v > V_vir_iso * V_vir) [current={self.V_vir_iso_val}]: ') or self.V_vir_iso_val)
-            self.sat_reclass_val = input(f'Satellite reclassification (True/False) [current={self.sat_reclass_val}]: ').lower() in ('true', '1', 'yes') if input else self.sat_reclass_val
-            self.iso_reclass_val = input(f'Isolated galaxy reclassification (True/False) [current={self.iso_reclass_val}]: ').lower() in ('true', '1', 'yes') if input else self.iso_reclass_val
-            self.contrast_val = input(f'Density-contrast-based classification (True/False) [current={self.contrast_val}]: ').lower() in ('true', '1', 'yes') if input else self.contrast_val
+            self.R_h_group = float(input(f'R_h_group (satellites grouped if d < R_h_group * R_h) [current={self.R_h_group}]: ') or self.R_h_group)
+            self.V_vir_group = float(input(f'V_vir_group (satellites grouped if v < V_vir_group * V_vir) [current={self.V_vir_group}]: ') or self.V_vir_group)
+            self.R_h_iso = float(input(f'R_h_iso (galaxy is isolated if d > R_h_iso * R_h) [current={self.R_h_iso}]: ') or self.R_h_iso)
+            self.V_vir_iso = float(input(f'V_vir_iso (galaxy is isolated if v > V_vir_iso * V_vir) [current={self.V_vir_iso}]: ') or self.V_vir_iso)
+            self.sat_reclass = input(f'Satellite reclassification (True/False) [current={self.sat_reclass}]: ').lower() in ('true', '1', 'yes') if input else self.sat_reclass
+            self.iso_reclass = input(f'Isolated galaxy reclassification (True/False) [current={self.iso_reclass}]: ').lower() in ('true', '1', 'yes') if input else self.iso_reclass
+            self.contrast = input(f'Density-contrast-based classification (True/False) [current={self.contrast}]: ').lower() in ('true', '1', 'yes') if input else self.contrast
             self.R_max = float(input(f'Max search radius R_max [current={self.R_max}]: ') or self.R_max)
             self.B_scaling = float(input(f'B scaling factor for density-contrast classification [current={self.B_scaling}]: ') or self.B_scaling)
             self.h = float(input(f'Dimensionless Hubble parameter h = H0 / (100 km/s/Mpc) [current={self.h}]: ') or self.h)
@@ -149,19 +149,19 @@ class GroupFinderInterface:
                 self.dim = int(input(f'Data dimension (3 for RA/Dec/velocity, 6 for x/y/z/vx/vy/vz) [current={self.dim}]: ') or self.dim)
                 self.box_size = float(input(f'Box size [current={self.box_size}]: ') or self.box_size)
                 self.periodic = input(f'Periodic boundary conditions (True/False) [current={self.periodic}]: ').lower() in ('true', '1', 'yes') if input else self.periodic
-                if self.contrast_val is False:
-                    self.vel_cut_val = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut_val}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut_val
+                if self.contrast is False:
+                    self.vel_cut = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut
                 else:
                     pass  # velocity cut not applicable for density-contrast classification
                 if self.dim == 6:
-                    self.tree_search_val = input(f'Use tree search: recommended for use only with 6D classification (True/False) [current={self.tree_search_val}]: ').lower() in ('true', '1', 'yes') if input else self.tree_search_val
+                    self.tree_search = input(f'Use tree search: recommended for use only with 6D classification (True/False) [current={self.tree_search}]: ').lower() in ('true', '1', 'yes') if input else self.tree_search
             else: # observational data
                 self.use_distance = input(f'Use comoving distance and peculiar velocity (True); otherwise, use redshift only (False) [current={self.use_distance}]: ').lower() in ('true', '1', 'yes') if input else self.use_distance
                 if self.use_distance: 
-                    if self.contrast_val is False:
-                        self.vel_cut_val = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut_val}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut_val
+                    if self.contrast is False:
+                        self.vel_cut = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut
                 else:
-                    self.vel_cut_val = False
+                    self.vel_cut = False
                 # observational data does not require box size
                 # assumes non-periodic by default, and tree search not applicable for RA/Dec/velocity data
             
@@ -172,15 +172,15 @@ class GroupFinderInterface:
         with open(filename, 'w') as f:
             json.dump({
                 "obs": obs,
-                "R_h_group": self.R_h_group_val,
-                "V_vir_group": self.V_vir_group_val,
-                "R_h_iso": self.R_h_iso_val,
-                "V_vir_iso": self.V_vir_iso_val,
-                "vel_cut": self.vel_cut_val if self.use_distance and not self.contrast_val else False,
-                "tree_search": self.tree_search_val if self.dim == 6 and not obs else False,
-                "sat_reclass": self.sat_reclass_val,
-                "iso_reclass": self.iso_reclass_val,
-                "contrast": self.contrast_val,
+                "R_h_group": self.R_h_group,
+                "V_vir_group": self.V_vir_group,
+                "R_h_iso": self.R_h_iso,
+                "V_vir_iso": self.V_vir_iso,
+                "vel_cut": self.vel_cut if self.use_distance and not self.contrast else False,
+                "tree_search": self.tree_search if self.dim == 6 and not obs else False,
+                "sat_reclass": self.sat_reclass,
+                "iso_reclass": self.iso_reclass,
+                "contrast": self.contrast,
                 "box_size": self.box_size if not obs else None,
                 "R_max": self.R_max,
                 "periodic": self.periodic if not obs else False,

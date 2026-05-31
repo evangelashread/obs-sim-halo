@@ -86,6 +86,3 @@ def generate_z_dist_data(min_z=0.0, max_z=0.35, zstep=1e-4):
         f.create_dataset('redshifts', data=z_vals)
     print(f'Wrote redshift-distance relation to {outfile}')
     shutil.move(outfile, os.path.join(parent_dir, f'input/{outfile}'))
-    
-if __name__ == "__main__":
-    generate_concentration_data()

@@ -15,7 +15,7 @@ namespace dataio {
 using IDType = std::int64_t;
 
 /**
- * @brief Structure to hold input observational data
+ * @brief Input observational data
  * Positions are assumed to be in spherical coords (radial distance, RA, Dec)
  */
 struct ObsInputData {
@@ -26,7 +26,7 @@ struct ObsInputData {
 };
 
 /**
- * @brief Structure to hold input simulation data
+ * @brief Input simulation data
  * Positions are assumed to be in Cartesian coords (x, y, z)
  */
 struct SimInputData {
@@ -39,7 +39,7 @@ struct SimInputData {
 };
 
 /**
- * @brief Structure to hold concentration data for interpolation
+ * @brief Mass-concentration data for interpolation
  */
 struct ConcentrationData {
     std::vector<double> halo_masses;
@@ -52,9 +52,6 @@ struct RedshiftDistanceData {
     std::vector<double> distances;
 };
 
-/**
- * @brief Structure to hold group finder results
- */
 struct GroupFinderResults {
     std::vector<std::vector<IDType>> group_member_ids;
     std::vector<IDType> central_ids;
@@ -63,8 +60,7 @@ struct GroupFinderResults {
 
 /**
  * @brief Structure to hold configuration parameters
- * These are just copied from the JSON config file but stored here
- * for redundancy.
+ * These are just copied from the JSON config file but stored here for redundancy.
  */
 struct GroupFinderConfig {
     int dim;
@@ -87,9 +83,6 @@ struct GroupFinderConfig {
     double omega_M;
 };
 
-/**
- * @brief Structure to hold statistics
- */
 
 struct GroupFinderStatistics {
     std::int64_t total_groups; // total number of groups found
@@ -98,7 +91,7 @@ struct GroupFinderStatistics {
 };
 
 /**
- * @brief HDF5 Data I/O Handler class
+ * @brief Data I/O class
  */
 class HDF5Handler {
 public:
@@ -111,22 +104,11 @@ public:
 
     /**
      * @brief Read simulation input data from HDF5 file
-     * @param filename Path to HDF5 file
-     * @return SimInputData structure
      */
     static SimInputData readSimData(const std::string& filename);
 
-    /**
-     * @brief Read concentration data from HDF5 file
-     * @param filename Path to HDF5 file
-     * @return ConcentrationData structure
-     */
     static ConcentrationData readConcentrationData(const std::string& filename);
-    /**
-     * @brief Read redshift-distance relation data from HDF5 file
-     * @param filename Path to HDF5 file
-     * @return RedshiftDistanceData structure
-     */
+
     static RedshiftDistanceData readRedshiftDistanceData(const std::string& filename);
 
     /**
@@ -157,23 +139,18 @@ private:
     static std::vector<T> readDataset1D(H5::DataSet& dataset, const H5::DataType& predType);
 
     /**
-     * @brief Read a 2D dataset from HDF5 file (for arrays)
+     * @brief Read a 2D dataset from HDF5 file (for vecs of arrays)
      * @tparam T Data type
      * @tparam N Array size
      * @param dataset HDF5 dataset
      * @param predType HDF5 predefined data type
      * @return Vector of arrays
-     */
+    */
     template<typename T, std::size_t N>
     static std::vector<std::array<T, N>> readDataset2D(H5::DataSet& dataset, const H5::DataType& predType);
 
     /**
      * @brief Write a 1D dataset to HDF5 file
-     * @tparam T Data type
-     * @param group HDF5 group
-     * @param name Dataset name
-     * @param data Data vector
-     * @param predType HDF5 predefined data type
      */
     template<typename T>
     static void writeDataset1D(
@@ -185,33 +162,19 @@ private:
 
     /**
      * @brief Read a jagged 1D array (vector<vector<T>>) from HDF5
-     * @tparam T Data type
-     * @param dataset HDF5 dataset with variable-length datatype
-     * @param predType HDF5 predefined data type
-     * @return Vector<vector<T>>
-     */
+    */
     template<typename T>
     static std::vector<std::vector<T>> readJagged1D(H5::DataSet& dataset, const H5::DataType& predType);
 
     /**
      * @brief Read a jagged 2D array (vector<vector<array<T,N>>>) from HDF5
-     * @tparam T Data type
-     * @tparam N Array size
-     * @param dataset HDF5 dataset with variable-length datatype
-     * @param predType HDF5 predefined data type
-     * @return Vector<vector<array<T,N>>>
-     */
+    */
     template<typename T, std::size_t N>
     static std::vector<std::vector<std::array<T, N>>> readJagged2D(H5::DataSet& dataset, const H5::DataType& predType);
 
     /**
      * @brief Write a jagged 1D array (vector<vector<T>>) to HDF5
-     * @tparam T Data type
-     * @param group HDF5 group
-     * @param name Dataset name
-     * @param data Data to write
-     * @param predType HDF5 predefined data type
-     */
+    */
     template<typename T>
     static void writeJagged1D(
         H5::Group& group,

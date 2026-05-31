@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
     double R_max = config_json["R_max"].get<double>();
     double box_size = R_max; // For obs, box size can be set to any value
     // but note the code will select all galaxies within R_max if R_max >= box_size * sqrt(3)/2,
-    // which could slow down the run and increase memory usage for very large datasets (O(10^5))
+    // which could slow down the run and increase memory usage for large datasets (O(10^5))
     bool periodic = config_json["periodic"].get<bool>();
     double B_scaling = config_json["B_scaling"].get<double>();
     double h_val = config_json["h"].get<double>();

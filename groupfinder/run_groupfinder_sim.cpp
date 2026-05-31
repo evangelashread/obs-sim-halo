@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Parse comma-separated input and output filenames
+    // Parse input and output filenames, must be comma separated
     std::vector<std::string> infilenames;
     std::vector<std::string> outfilenames;
     
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     std::stringstream filetime;
     filetime << std::put_time(std::localtime(&in_time_t), "%Y%m%d%H%M%S");
 
-    // Load interpolation data using HDF5 handler
+    // Load interpolation data
     dataio::ConcentrationData conc_data;
     try {
         conc_data = dataio::HDF5Handler::readConcentrationData("input/concentration.h5");
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Configure run parameters: read in from config JSON file
+    // Configure run parameters: read in from the JSON config file
     std::ifstream config_stream(config_file);
     if (!config_stream) {
         std::cerr << "Cannot open config file: " << config_file << "\n";

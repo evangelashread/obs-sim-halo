@@ -27,26 +27,15 @@ static inline double wrap(double x, double L) {
 }
 
 static inline Vec3 minimal(const Vec3& a,const Vec3& b,double L) {
-    /**
-     * @brief Compute the minimal image distance vector between two points in a periodic box
-     */
+    /** @brief Compute the minimal image distance vector between two points in a periodic box*/
     return {
         wrap(a[0]-b[0],L),wrap(a[1]-b[1],L),wrap(a[2]-b[2],L)
     };
 }
 
 static inline double critical_density(double z, double p_crit_0, double omega_m) {
-    /**
-     * @brief Compute the critical density rho at a given redshift
-     */
+    /** @brief Compute the critical density rho at a given redshift */
     return p_crit_0 * (omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
-}
-
-static inline double Hubble(double z, double H0, double omega_m) {
-    /**
-     * @brief Compute the Hubble parameter H(z) at a given redshift
-     */
-    return H0 * std::sqrt(omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
 }
 
 static double behroozi_SMHM(double z, const double& x, double current_Mstar, const BehrooziParams& params) {
@@ -192,9 +181,7 @@ static inline double VelocityLOS(const Vec3& pos, const Vec3& vel) {
 }
 
 HaloProps compute_halo_props(double z, double logMstar, double p_crit_0, const BehrooziParams& params, double omega_m) {
-    /**
-     * @brief Precompute halo properties once per iteration of group_finding
-     */
+    /** @brief Precompute halo properties once per iteration of group_finding */
     double a = 1.0 / (1.0 + z);
     double a1 = a - 1.0;
     double lna = std::log(a);
@@ -274,18 +261,16 @@ double DistProjectedRCTan::operator()(const Vec3& r_cen_mw, const Vec3& r_sat_mw
     Vec3 rs = {r_cen_mw[0]+dcs[0], r_cen_mw[1]+dcs[1], r_cen_mw[2]+dcs[2]};
     double rs2 = rs[0]*rs[0] + rs[1]*rs[1] + rs[2]*rs[2];
 
-    if(rs2==0.) return 0.0; // This case is unlikely to occur but avoids division by zero
+    if(rs2==0.) return 0.0; // unlikely to occur but avoids division by zero
     double rs_len = std::sqrt(rs2);
     double cos_theta = (r_cen_mw[0]*rs[0] + r_cen_mw[1]*rs[1] + r_cen_mw[2]*rs[2])/(rc_len*rs_len);
 
-    // Clamp numerically
+    // Clamp, only forward intersection allowed
     if (cos_theta > 1.0) cos_theta = 1.0;
     if (cos_theta < -1.0) cos_theta = -1.0;
-
-    // Only forward intersection allowed
     if (cos_theta <= 0.0) return std::numeric_limits<double>::infinity();
 
-    // Compute the haversine distance
+    // haversine distance
     double h = 0.5*(1.0 - cos_theta);
 
     // Use the small-angle approximation if h is too small
@@ -331,12 +316,17 @@ double DistObs::operator()(const double& RA_cen, const double& Dec_cen,
 }
 
 /* ################# Define velocity methods ################ */
-/* The below method mimics velocity criteria implementation of an observational group finder */
+/* The below methods mimic velocity criteria implementation of an observational group finder,
+and can be used in either simulation or observation data */
 double VelTotal::operator()(const double& z_c, const double& z_s) const {          
-    return gf::GF_C * (z_s - z_c) / (1.0 + z_c);
+    return gf::GF_C * (z_s - z_c) / (1.0 + z_c); // redshift space
+}
+ 
+double VelObs::operator()(const double& v_c, const double& v_s) const {
+    return std::abs(v_s - v_c); // real space (peculiar LOS velocity)
 }
 
-/* The below methods are relevant for implementations considering peculiar velocity only */
+/* The below methods are relevant for simulation based implementations selecting on peculiar velocity */
 double VelPeculiar3D::operator()(const Vec3& v_c, const Vec3& v_s, double L) const {
     Vec3 rel_vel = {v_s[0]-v_c[0], v_s[1]-v_c[1], v_s[2]-v_c[2]};
     return std::sqrt(rel_vel[0]*rel_vel[0] + rel_vel[1]*rel_vel[1] + rel_vel[2]*rel_vel[2]);
@@ -345,10 +335,6 @@ double VelPeculiar3D::operator()(const Vec3& v_c, const Vec3& v_s, double L) con
 double VelPeculiar2D::operator()(const Vec3& mw_c, const Vec3& mw_s,
                                 const Vec3& v_c, const Vec3& v_s) const {
     return VelocityLOS(mw_s, v_s) - VelocityLOS(mw_c, v_c);
-}
-
-double VelObs::operator()(const double& v_c, const double& v_s) const {
-    return std::abs(v_s - v_c);
 }
 
 template<class D,class V>
@@ -775,7 +761,7 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
         }
         if (config.contrast) {
             if (isolated == true) {
-                // compute the background levels relative to the 10 nearest centrals
+                // compute the background levels relative to the nearest centrals
                 std::vector<int> dist_order(cand.size());
                 std::iota(dist_order.begin(), dist_order.end(), 0);
                 std::stable_sort(dist_order.begin(), dist_order.end(),
@@ -939,7 +925,6 @@ void GroupFinder<D,V>::initialize(const std::vector<double>& masses_unsorted,
             total_redshifts[i] = cosmo_redshift;
         }
 
-        // By default, assume periodic boundary conditions
         if (periodic) {
             d[0] = wrap(d[0],L); d[1] = wrap(d[1],L); d[2] = wrap(d[2],L);
         }
@@ -1003,9 +988,7 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
 template<class D,class V>
 std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& periodic) {
-    /**
-     * @brief The work horse of the entire group finder
-     */
+    /** @brief The work horse of the entire group finder */
     
     // If kdtree, initialize the AboriaNeighborBuilder class
     // Rebuild the tree upon every call to the class
@@ -1130,7 +1113,7 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
     for (size_t g = 0; g < tmp_groups.size(); ++g) {
         if (tmp_groups[g].empty()) continue;
         if (tmp_centrals[g] == IDType(-1)) {
-            // Skip orphan group (no surviving central -- reclassified as satellite)
+            // Skip orphan group (no surviving central, reclassified as satellite)
             std::cerr << "Warning: Group " << g << " has no central. This should not happen.\n";
             std::abort();
         }
@@ -1180,8 +1163,6 @@ GroupFinder<D,V>::run_once_obs(
     return classify(Rmax, scale, periodic);
 }
 };
-
-// Explicit template instantiations
 
 // 6D: 3D positions, 3D velocities
 template class gf::GroupFinder<gf::Dist3D, gf::VelPeculiar3D>;

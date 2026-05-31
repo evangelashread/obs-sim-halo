@@ -2,8 +2,6 @@
 
 A high-performance, halo-based galaxy group finding algorithm implemented in C++ with a Python interface, designed for consistent comparisons between observational and simulation data.
 
-Note: this repo is still being updated.
-
 ## Overview
 
 ObsSimHalo offers two main approaches for identifying galaxy groups:
@@ -71,8 +69,8 @@ Required packages:
 3. **Build the C++ executables**:
    ```bash
    cd groupfinder
-   make obs  # For observational data processing
-   make sim  # For simulation data processing
+   make obs 
+   make sim 
    ```
 
 4. **Run tests**
@@ -110,7 +108,7 @@ obs_data = ObservationalData(
 obs_data.write_to_hdf5('input/data/input_file.h5')
 
 # Generate halo-mass-concentration data and redshift-distance data for group finder
-# Note that you may have to adjust the cosmology manually in InterpolationData (this will be made configurable in a later update)
+# Note that you might have to adjust the cosmology manually in InterpolationData (this should be made configurable in a later update)
 InterpolationData.generate_concentration_data()
 InterpolationData.generate_z_dist_data()
 
@@ -161,7 +159,7 @@ run_groupfinder('sim', input_file(s), output_file(s), 'input/sim_config.json')
 
 ## Output
 
-Results are saved to HDF5 files with the following contents:
+Results are saved to HDF5 files with these contents:
 
 - **`group_member_ids`**: Galaxy groups, each stored as a list of original galaxy IDs. Single-member lists represent isolated galaxies.
 - **`central_ids`**: The central galaxy in each group (including isolated galaxies).
