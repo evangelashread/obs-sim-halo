@@ -158,9 +158,11 @@ public:
 private:
     double L, H, OMEGA_M;
     bool periodic;
+    double R_h_max; // computed once at runtime, only if configured in observation mode with tree search
     std::vector<IDType> groupcat_ids_sorted; // sorted groupcat ids
     std::vector<double> masses_sorted;  // sorted masses in log_10 solar masses
     std::vector<Vec3> positions_sorted; // sorted 3D cartesian/spherical positions
+    std::vector<Vec3> cartesian_from_RA_Dec; // used for a tree search in obsevational (RA/dec) mode
     std::vector<Vec3> velocities_sorted; // sorted 3D velocities
     std::vector<double> velocities_sorted_obs;
     std::vector<Vec3> MWcoords;  // sorted minimal-image of each position relative to the MW position

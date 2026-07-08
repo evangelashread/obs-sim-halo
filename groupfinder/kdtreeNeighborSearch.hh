@@ -15,21 +15,22 @@ class AboriaNeighborBuilder {
     using Particles_t = Aboria::Particles<std::tuple<id>,3,std::vector,Aboria::Kdtree>;
     Particles_t particles;
     std::vector<IDType> indices; // Local indices corresponding to particles
-    double L;
+    double min_L;
+    double max_L;
     bool periodic_box;
 public:
-    AboriaNeighborBuilder(const std::vector<Vec3>& positions, const std::vector<IDType>& local_indices, double box_size, bool periodic)
-    : particles(positions.size()), indices(local_indices), L(box_size), periodic_box(periodic) {
+    AboriaNeighborBuilder(const std::vector<Vec3>& positions, const std::vector<IDType>& local_indices, double lower_bound, double box_size, bool periodic)
+    : particles(positions.size()), indices(local_indices), min_L(lower_bound), max_L(box_size), periodic_box(periodic) {
 
         using position = Particles_t::position;
-        // Fill particle positions
+        // Fill particle positions (assumed to be cartesian)
         for (size_t i = 0; i < positions.size(); ++i) {
             Aboria::get<position>(particles[i]) = Aboria::vdouble3(positions[i][0], positions[i][1], positions[i][2]);
             Aboria::get<id>(particles[i]) = indices[i]; // Use local indices
         }
         // Initialize neighbor search
-        Aboria::vdouble3 min = Aboria::vdouble3::Constant(0.0);
-        Aboria::vdouble3 max = Aboria::vdouble3::Constant(L);
+        Aboria::vdouble3 min = Aboria::vdouble3::Constant(min_L);
+        Aboria::vdouble3 max = Aboria::vdouble3::Constant(max_L);
         Aboria::vbool3 pbc  = Aboria::vbool3::Constant(periodic_box);
         particles.init_neighbour_search(min,max,pbc);
     }

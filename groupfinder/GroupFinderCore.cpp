@@ -26,7 +26,7 @@ static inline double wrap(double x, double L) {
     return x - L * std::round(x / L);
 }
 
-static inline Vec3 minimal(const Vec3& a,const Vec3& b,double L) {
+static inline Vec3 minimal(const Vec3& a, const Vec3& b, double L) {
     /** @brief Compute the minimal image distance vector between two points in a periodic box*/
     return {
         wrap(a[0]-b[0],L),wrap(a[1]-b[1],L),wrap(a[2]-b[2],L)
@@ -36,6 +36,19 @@ static inline Vec3 minimal(const Vec3& a,const Vec3& b,double L) {
 static inline double critical_density(double z, double p_crit_0, double omega_m) {
     /** @brief Compute the critical density rho at a given redshift */
     return p_crit_0 * (omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
+}
+
+static inline Vec3 celestial_to_cartesian(const Vec3& vec, const double& R) {
+    /** 
+    @brief Convert celestial to cartesian coordinates. 
+    Assumed that input vector is in the form (r, theta or dec [rad], phi or RA [rad]), where dec ranges 
+    from [-pi/2, pi/2] and RA from [0, 2pi). Place on a sphere with radius R >> 1 in order to avoid incurring
+    floating point error from placing many points on the surface of a sphere that is to small.
+    */
+    double x = R * std::cos(vec[1]) * std::cos(vec[2]);
+    double y = R * std::cos(vec[1]) * std::sin(vec[2]);
+    double z = R * std::sin(vec[1]);
+    return {x, y, z};
 }
 
 static double behroozi_SMHM(double z, const double& x, double current_Mstar, const BehrooziParams& params) {
@@ -200,7 +213,7 @@ void summarize(const std::string& label, const std::vector<IDType>& group_label)
     for (size_t i = 0; i < group_label.size(); ++i) {
         IDType g = group_label[i];
         if (g == -1) {
-            std::cerr << "Warning: galaxy " << i << " is unassigned to any group.\n";
+            std::cerr << "Error: galaxy " << i << " is unassigned to any group.\n";
             std::abort();
         } else { // Count the number of members in each group (all have same group label as central)
             ++group_sizes[g];
@@ -356,11 +369,11 @@ void GroupFinder<D,V>::set_conc_table(std::vector<double> M_arr, std::vector<std
     const size_t N_z = redshift.size();
 
     if (c_array.size() != N_z) {
-        std::cerr << "Warning: the number of vectors in the concentration table must equal the number of redshift bins.\n";
+        std::cerr << "Error: the number of vectors in the concentration table must equal the number of redshift bins.\n";
         std::abort();
     }
     if (N_M < 2) {
-        std::cerr << "Warning: concentration table must have at least two entries.\n";
+        std::cerr << "Error: concentration table must have at least two entries.\n";
         std::abort();
     }
     // Copy and build logs (assumes monotonic/unique already)
@@ -371,7 +384,7 @@ void GroupFinder<D,V>::set_conc_table(std::vector<double> M_arr, std::vector<std
         tab_logc_[i].resize(N_M);
         std::vector<double> vec_z = c_array[i];
         if (vec_z.size() != N_M) {
-            std::cerr << "Warning: the number of concentration elements per redshift bin must equal the number of mass bins.\n";
+            std::cerr << "Error: the number of concentration elements per redshift bin must equal the number of mass bins.\n";
             std::abort();
         }
         for (size_t j = 0; j < N_M; ++ j) {
@@ -402,7 +415,7 @@ void GroupFinder<D,V>::set_z_dist_table(std::vector<double> z_arr, std::vector<d
     const size_t N_D = D_arr.size();
     const size_t N_z = z_arr.size();
     if (N_D < 2) {
-        std::cerr << "Warning: redshift-distance table must have at least two entries.\n";
+        std::cerr << "Error: redshift-distance table must have at least two entries.\n";
         std::abort();
     }
     // Copy and build logs (assumes monotonic/unique already)
@@ -537,17 +550,23 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0 || classification[i] == 1) { // 0 = group central, 1 = isolated central
             central_indices.push_back((IDType)i);
-            central_positions.push_back(positions_sorted[i]);
+            if (config.tree_search && config.obs) { 
+                central_positions.push_back(cartesian_from_RA_Dec[i]); 
+            } else {
+                central_positions.push_back(positions_sorted[i]);
+            }
             central_map[(IDType)i] = (int)central_indices.size() - 1;
         } else if (classification[i] == 2) {
             satellite_indices.push_back((IDType)i);
         } else {
-            std::cerr << "Warning: Galaxy without a classification found.\n";
+            std::cerr << "Error: Galaxy without a classification found.\n";
             std::abort();
         }
     }
     if (config.tree_search) {
-        tree = std::make_unique<AboriaNeighborBuilder>(central_positions, central_indices, L, periodic);
+        double L_min;
+        if (config.obs) { L_min = -L; } else { L_min = 0.0; }
+        tree = std::make_unique<AboriaNeighborBuilder>(central_positions, central_indices, L_min, L, periodic);
     }
     int reclassified = 0;
     size_t N = satellite_indices.size();
@@ -556,7 +575,12 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
         IDType local_s_id = satellite_indices[s]; // index into positions_sorted
         std::vector<IDType> cand;
         if (config.tree_search) { // Returns local indices
-            cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, Rmax); // returns value from central_indices
+            if (!config.obs) {
+                cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, Rmax); // returns value from central_indices
+            } else {
+                // since we are searching in RA/Dec space, just use the distance of the maximum virial radius
+                cand = tree->kdtree_search((size_t)local_s_id, cartesian_from_RA_Dec, 1.5 * sel.R_h_group * R_h_max * (Rmax / positions_sorted[local_s_id][0]));
+            }
         } else { // Returns local indices
             if (Rmax >= GF_BOX_SIZE * std::sqrt(3) / 2.0) {
                 cand = central_indices; // All centrals are candidates
@@ -565,7 +589,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             }
         }
         if (cand.empty()) {
-            std::cerr << "Warning: No candidate centrals found for satellite index " << local_s_id << "\n";
+            std::cerr << "Error: No candidate centrals found for satellite index " << local_s_id << "\n";
             std::abort();
         }
 
@@ -612,7 +636,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             if (P_M_cands.empty()) {
                 // The satellite remains in its current group
                 // Unlikely to occur, since a satellite must meet all criteria above to have been assigned to a group in part 1
-                std::cerr << "Warning: No candidate centrals passed criteria for satellite index " << local_s_id << ".\n";
+                std::cerr << "Error: No candidate centrals passed criteria for satellite index " << local_s_id << ".\n";
                 continue;
             } else if (P_M_cands.size() == 1) {
                 max_index = 0;
@@ -639,7 +663,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             if (ratios.empty()) {
                 // The satellite remains in its current group
                 // Unlikely to occur, since a satellite must meet all criteria above to have been assigned to a group in part 1
-                std::cerr << "Warning: No candidate centrals passed criteria for satellite index " << local_s_id << ".\n";
+                std::cerr << "Error: No candidate centrals passed criteria for satellite index " << local_s_id << ".\n";
                 continue;
             } else if (ratios.size() == 1) {
                 min_index = 0;
@@ -670,7 +694,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
     for (size_t i = 0; i < group_label.size(); ++i) {
         IDType g = group_label[i];
         if (g == IDType(-1)) {
-            std::cerr << "Warning: galaxy " << i << " is unassigned to any group.\n";
+            std::cerr << "Error: galaxy " << i << " is unassigned to any group.\n";
             std::abort();
         } else ++group_sizes[g];
     }
@@ -679,7 +703,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
         int sz = group_sizes[g];
         if (sz == 1) {
             if (classification[i] == 2) {
-                std::cerr << "Warning: Satellite assigned to a group of size 1 found. This should not happen.\n";
+                std::cerr << "Error: Satellite assigned to a group of size 1 found. This should not happen.\n";
                 std::abort();
             } else {
                 classification[i] = 1; // isolated central
@@ -703,13 +727,19 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0) { // 0 = group central
             group_central_indices.push_back(i);
-            group_central_positions.push_back(positions_sorted[i]);
+            if (config.tree_search && config.obs) {
+                group_central_positions.push_back(cartesian_from_RA_Dec[i]);
+            } else {
+                group_central_positions.push_back(positions_sorted[i]);
+            }
         } else if (classification[i] == 1) { // 1 = isolated central
             isolated_central_indices.push_back(i);
         }
     }
     if (config.tree_search) {
-        tree = std::make_unique<AboriaNeighborBuilder>(group_central_positions, group_central_indices, L, periodic);
+        double L_min;
+        if (config.obs) { L_min = -L; } else { L_min = 0.0; }
+        tree = std::make_unique<AboriaNeighborBuilder>(group_central_positions, group_central_indices, L_min, L, periodic);
     }
 
     size_t N = isolated_central_indices.size();
@@ -718,7 +748,11 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
         IDType local_i_id = isolated_central_indices[i];
         std::vector<IDType> cand;
         if (config.tree_search) {
-            cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, Rmax); // value from group_central_indices
+            if (!config.obs) {
+                cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, Rmax); // value from group_central_indices
+            } else {
+                cand = tree->kdtree_search((size_t)local_i_id, cartesian_from_RA_Dec, 1.5 * sel.R_h_iso * R_h_max * (Rmax / positions_sorted[local_i_id][0])); 
+            }
         } else {
             if (Rmax >= GF_BOX_SIZE * std::sqrt(3) / 2.0) {
                 cand = group_central_indices; // All group centrals are candidates
@@ -727,8 +761,8 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             }
         }
         if (cand.empty()) {
-            std::cerr << "Warning: No candidate group centrals found for isolated central index " << local_i_id << "\n";
-            std::abort();
+            std::cout << "Warning: No candidate group centrals found for isolated central index " << local_i_id << "\n";
+            continue;
         }
         std::vector<double> ratios(cand.size());
         std::vector<double> P_M_cands(cand.size());
@@ -983,19 +1017,39 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
                                             OMEGA_M);
         groupcat_ids_sorted[i] = groupcat_ids[mass_order[i]];
     }
+
+    if (config.tree_search) {
+        cartesian_from_RA_Dec.resize(N);
+        std::vector<double> R_h_values(N);
+        for (size_t i = 0; i < N; ++i) {
+            R_h_values[i] = halo_props[i].R_h;
+        }
+        auto it = std::max_element(R_h_values.begin(), R_h_values.end(), [](const double& a, const double& b) { return a < b; });
+        R_h_max = static_cast<double>(*it);
+    }
 }
 
 template<class D,class V>
 std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& periodic) {
     /** @brief The work horse of the entire group finder */
-    
+
+    size_t N = masses_sorted.size();
     // If kdtree, initialize the AboriaNeighborBuilder class
     // Rebuild the tree upon every call to the class
-    if (config.tree_search && !config.obs) {
-        tree = std::make_unique<AboriaNeighborBuilder>(positions_sorted, local_ids, L, periodic);
+    if (config.tree_search) {
+        if (!config.obs) {
+            tree = std::make_unique<AboriaNeighborBuilder>(positions_sorted, local_ids, 0.0, L, periodic);
+        } else {
+            // Convert dec (1st index) and RA (2nd index) to cartesian coords and build tree from it
+            for (size_t v = 0; v < N; ++v) {
+                Vec3 vec = {1., positions_sorted[v][1], positions_sorted[v][2]};
+                cartesian_from_RA_Dec[v] = celestial_to_cartesian(vec, Rmax);
+            }
+            tree = std::make_unique<AboriaNeighborBuilder>(cartesian_from_RA_Dec, local_ids, -L, L, periodic);
+        }
     }
-    size_t N = masses_sorted.size();
+
     group_label.assign(N, IDType(-1)); // -1 means unassigned
 
     for(size_t c = 0; c < N; ++c){
@@ -1004,7 +1058,11 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
         // Find the candidate satellites
         std::vector<IDType> cand;
         if (config.tree_search) {
-            cand = tree->kdtree_search(c, positions_sorted, 3.0*halo_props[c].R_h);
+            if (!config.obs) {
+                cand = tree->kdtree_search(c, positions_sorted, 1.5 * sel.R_h_group * halo_props[c].R_h);
+            } else {
+                cand = tree->kdtree_search(c, cartesian_from_RA_Dec, 1.5 * sel.R_h_group * halo_props[c].R_h * (Rmax / positions_sorted[c][0]));
+            }
         } else {
             if (Rmax >= GF_BOX_SIZE * std::sqrt(3) / 2.0) {
                 cand = local_ids; // All galaxies are candidates
@@ -1013,7 +1071,7 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
             }
         }
         if (cand.empty()) {
-            std::cerr << "Warning: No candidate satellites found for central index " << c << "\n";
+            std::cerr << "Error: No candidate satellites found for central index " << c << "\n";
             std::abort();
         }
         auto tr = transform(c, cand);
@@ -1073,7 +1131,7 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
     labels.erase(std::unique(labels.begin(), labels.end()), labels.end());
     for (auto &id : labels) {
         if (id == IDType(-1)) {
-            std::cerr << "Warning: Unassigned group label found in unique labels. This should not happen.\n";
+            std::cerr << "Error: Unassigned group label found in unique labels. This should not happen.\n";
             std::abort();
         }
     }
@@ -1114,7 +1172,7 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
         if (tmp_groups[g].empty()) continue;
         if (tmp_centrals[g] == IDType(-1)) {
             // Skip orphan group (no surviving central, reclassified as satellite)
-            std::cerr << "Warning: Group " << g << " has no central. This should not happen.\n";
+            std::cerr << "Error: Group " << g << " has no central. This should not happen.\n";
             std::abort();
         }
         // Ensure central first

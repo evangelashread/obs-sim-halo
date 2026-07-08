@@ -4,7 +4,7 @@
     "V_vir_group": 3.0,
     "R_h_iso": 2.0,
     "V_vir_iso": 3.0,
-    "vel_cut": false,
+    "vel_cut": true,
     "tree_search": false,
     "sat_reclass": true,
     "iso_reclass": true,

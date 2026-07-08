@@ -1,7 +1,7 @@
 """
 Run the observational and simulation density contrast configurations and the 6D
 simulation configurations N times to verify correctness of group finder implementation.
-For density contrast runs, pass if more than 95% tests pass (because of probabilistic
+For density contrast runs, pass if more than 98% tests pass (because of probabilistic
 nature of the group assignment, which can split groups into subgroups occasionally).
 (for 6D sim runs, require 100% pass rate).
 """
@@ -15,6 +15,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from groupfinder_interface import GroupFinderInterface, SimulationData, ObservationalData, GroupFinderRunner, run_groupfinder
 from input import InterpolationData
+
+PASS_PERCENTAGE = 0.98
+NUM_TESTS = 100
 
 def suppress_output():
     """Suppress stdout and keep terminal clean"""
@@ -37,7 +40,7 @@ class Tests:
         InterpolationData.generate_concentration_data(max_z=max_z)
         InterpolationData.generate_z_dist_data(max_z=max_z)
     
-    def test_sim_yang05(self, n_tests=100):
+    def test_sim_yang05(self, n_tests=NUM_TESTS):
         passed_sim = 0
         print("Running sim_config tests...")
         old_stdout = suppress_output()
@@ -78,9 +81,9 @@ class Tests:
         restore_output(old_stdout)
         print(f"{passed_sim} out of {n_tests} tests passed.")
         passed_percentage = passed_sim/n_tests
-        assert passed_percentage >= 0.95, "Overall sim_config test FAILED."
+        assert passed_percentage >= PASS_PERCENTAGE, "Overall sim_config test FAILED."
 
-    def test_obs_yang05(self, n_tests=100):
+    def test_obs_yang05(self, n_tests=NUM_TESTS):
         passed_obs = 0
         print("Running obs_config tests...")
         old_stdout = suppress_output()
@@ -156,9 +159,9 @@ class Tests:
         restore_output(old_stdout)
         print(f"{passed_obs} out of {n_tests} tests passed.")
         passed_percentage = passed_obs/n_tests
-        assert passed_percentage >= 0.95, "Overall obs_config test FAILED."
+        assert passed_percentage >= PASS_PERCENTAGE, "Overall obs_config test FAILED."
 
-    def test_sim_6D(self, n_tests=100):
+    def test_sim_6D(self, n_tests=NUM_TESTS):
         passed_sim6D = 0
         print("Running sim_6D tests...")
         old_stdout = suppress_output()
@@ -200,9 +203,9 @@ class Tests:
         restore_output(old_stdout)
         print(f"{passed_sim6D} out of {n_tests} tests passed.")
         passed_percentage = passed_sim6D/n_tests
-        assert passed_percentage == 1.0, "Overall sim_config_6D test FAILED."
+        assert passed_percentage == 1.0, "Overall sim_config_6D test FAILED." # this is by design exact
         
-    def test_obs_redshift_yang05(self, n_tests=100):
+    def test_obs_redshift_yang05(self, n_tests=NUM_TESTS):
         passed_obs = 0
         print("Running tests of 'redshift survey' observational mode...")
         old_stdout = suppress_output()
@@ -223,10 +226,11 @@ class Tests:
             interface.h = 0.6774
             interface.omega_M = 0.3089
             interface.use_distance = False
+            interface.tree_search = True
 
             # Generate observational test data
             test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)
-            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), redshift=True)
+            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=6, redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
                 obs_positions = np.array(f['positions'][:]) # already in (redshift, ra [rad], dec [rad])
@@ -240,7 +244,7 @@ class Tests:
             
             # Generate simulation test data for B parameter calculation (do not need to make new config)
             test_sim = GroupFinderTest(box_size=300, h=interface.h, omega_M=interface.omega_M)
-            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=4, origin=True)
+            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=7, origin=True, redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/sim_data.h5"), "r") as f:
                 sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]
@@ -273,4 +277,4 @@ class Tests:
         restore_output(old_stdout)
         print(f"{passed_obs} out of {n_tests} tests passed.")
         passed_percentage = passed_obs/n_tests
-        assert passed_percentage >= 0.95, "Overall obs_config test FAILED."
+        assert passed_percentage >= PASS_PERCENTAGE, "Overall obs_config redshift test FAILED."

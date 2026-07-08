@@ -59,6 +59,8 @@ class ObservationalData:
     
     Positions must be provided as (comoving distance, Dec, RA) OR (z, Dec, RA) in that order.
     If comoving distance is provided, then the user must also provide peculiar velocities.
+
+    RA AND DEC MUST BE IN RADIANS.
     """
     masses: np.ndarray  # Shape: (n_observed,) in log10(M_sun)
     ids: np.ndarray  # Shape: (n_observed,) unique ids
@@ -145,6 +147,7 @@ class GroupFinderInterface:
             self.B_scaling = float(input(f'B scaling factor for density-contrast classification [current={self.B_scaling}]: ') or self.B_scaling)
             self.h = float(input(f'Dimensionless Hubble parameter h = H0 / (100 km/s/Mpc) [current={self.h}]: ') or self.h)
             self.omega_M = float(input(f'Matter density at z=0 [current={self.omega_M}]: ') or self.omega_M)
+            self.tree_search = input(f'Use tree search (True/False) [current={self.tree_search}]: ').lower() in ('true', '1', 'yes') if input else self.tree_search
             if obs is False:
                 self.dim = int(input(f'Data dimension (3 for RA/Dec/velocity, 6 for x/y/z/vx/vy/vz) [current={self.dim}]: ') or self.dim)
                 self.box_size = float(input(f'Box size [current={self.box_size}]: ') or self.box_size)
@@ -153,8 +156,6 @@ class GroupFinderInterface:
                     self.vel_cut = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut
                 else:
                     pass  # velocity cut not applicable for density-contrast classification
-                if self.dim == 6:
-                    self.tree_search = input(f'Use tree search: recommended for use only with 6D classification (True/False) [current={self.tree_search}]: ').lower() in ('true', '1', 'yes') if input else self.tree_search
             else: # observational data
                 self.use_distance = input(f'Use comoving distance and peculiar velocity (True); otherwise, use redshift only (False) [current={self.use_distance}]: ').lower() in ('true', '1', 'yes') if input else self.use_distance
                 if self.use_distance: 
@@ -176,8 +177,8 @@ class GroupFinderInterface:
                 "V_vir_group": self.V_vir_group,
                 "R_h_iso": self.R_h_iso,
                 "V_vir_iso": self.V_vir_iso,
-                "vel_cut": self.vel_cut if self.use_distance and not self.contrast else False,
-                "tree_search": self.tree_search if self.dim == 6 and not obs else False,
+                "vel_cut": self.vel_cut if self.use_distance and not self.contrast else True,
+                "tree_search": self.tree_search,
                 "sat_reclass": self.sat_reclass,
                 "iso_reclass": self.iso_reclass,
                 "contrast": self.contrast,
