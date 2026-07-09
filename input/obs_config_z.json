@@ -16,5 +16,7 @@
     "h": 0.6774,
     "omega_M": 0.3089,
     "dim": 3,
-    "use_distance": false
+    "use_distance": false,
+    "chunk": true,
+    "chunk_size": 10
 }

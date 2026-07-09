@@ -161,7 +161,8 @@ run_groupfinder('sim', input_file(s), output_file(s), 'input/sim_config.json')
 
 Results are saved to HDF5 files with these contents:
 
-- **`group_member_ids`**: Galaxy groups, each stored as a list of original galaxy IDs. Single-member lists represent isolated galaxies.
+- **`group_member_ids`**: List of original galaxy IDs grouped by group membership.
+- **`offsets`**: List of indices into group_member_ids indicating the beginning of a new galaxy group.
 - **`central_ids`**: The central galaxy in each group (including isolated galaxies).
 - **Statistics and group properties**: Derived quantities for analyzing the results (total number of groups, total numbers of isolated galaxies and galaxies in multi-member groups).
 

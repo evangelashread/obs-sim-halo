@@ -53,9 +53,10 @@ struct RedshiftDistanceData {
 };
 
 struct GroupFinderResults {
-    std::vector<std::vector<IDType>> group_member_ids;
     std::vector<IDType> central_ids;
     std::vector<double> halo_masses;
+    std::vector<IDType> group_member_ids;
+    std::vector<IDType> group_member_offsets; // size n_groups + 1
 };
 
 /**
@@ -124,7 +125,8 @@ public:
         const GroupFinderResults& results,
         const GroupFinderConfig& config,
         const GroupFinderStatistics& stats,
-        const std::string& timestamp = ""
+        const std::string& timestamp = "",
+        bool chunk = false, hsize_t chunk_size = 1000000
     );
 
 private:
@@ -157,7 +159,9 @@ private:
         H5::Group& group,
         const std::string& name,
         const std::vector<T>& data,
-        const H5::DataType& predType
+        const H5::DataType& predType,
+        bool chunk = false, 
+        hsize_t chunk_size = 1000000
     );
 
     /**

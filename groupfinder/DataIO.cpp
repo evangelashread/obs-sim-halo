@@ -1,5 +1,6 @@
 #include "DataIO.hh"
 #include <cstring>
+#include <algorithm>
 #include <hdf5/serial/H5Cpp.h>
 
 namespace dataio {
@@ -41,11 +42,19 @@ void HDF5Handler::writeDataset1D(
     H5::Group& group,
     const std::string& name,
     const std::vector<T>& data,
-    const H5::DataType& predType
+    const H5::DataType& predType,
+    bool chunk, hsize_t chunk_size
 ) {
     hsize_t dims[1] = {data.size()};
     H5::DataSpace dataspace(1, dims);
-    H5::DataSet dataset = group.createDataSet(name, predType, dataspace);
+
+    H5::DSetCreatPropList plist;
+    if (chunk && data.size() > 0) {
+        hsize_t actual_chunk = std::min<hsize_t>(chunk_size, dims[0]);
+        hsize_t chunk_dims[1] = {actual_chunk};
+        plist.setChunk(1, chunk_dims);
+    }
+    H5::DataSet dataset = group.createDataSet(name, predType, dataspace, plist);
     dataset.write(data.data(), predType);
 }
 
@@ -310,18 +319,20 @@ void HDF5Handler::writeResults(
     const GroupFinderResults& results,
     const GroupFinderConfig& config,
     const GroupFinderStatistics& stats,
-    const std::string& timestamp
+    const std::string& timestamp,
+    bool chunk, hsize_t chunk_size
 ) {
     try {
         H5::H5File file(filename, H5F_ACC_TRUNC);
         
-        // Create root group for results
+        // Create root group for group member id results, halo masses, etc
         H5::Group results_group(file.createGroup("/results"));
 
-        writeDataset1D(results_group, "central_ids", results.central_ids, H5::PredType::NATIVE_INT64);
-        writeDataset1D(results_group, "halo_masses", results.halo_masses, H5::PredType::NATIVE_DOUBLE);
-        writeJagged1D(results_group, "group_member_ids", results.group_member_ids, H5::PredType::NATIVE_INT64);
-        
+        writeDataset1D(results_group, "central_ids", results.central_ids, H5::PredType::NATIVE_INT64, chunk, chunk_size);
+        writeDataset1D(results_group, "halo_masses", results.halo_masses, H5::PredType::NATIVE_DOUBLE, chunk, chunk_size);
+        writeDataset1D(results_group, "group_member_ids", results.group_member_ids, H5::PredType::NATIVE_INT64, chunk, chunk_size);
+        writeDataset1D(results_group, "group_member_offsets", results.group_member_offsets, H5::PredType::NATIVE_INT64, chunk, chunk_size);
+
         // Create configuration group
         H5::Group config_group(file.createGroup("/configuration"));
 
@@ -425,6 +436,7 @@ void HDF5Handler::writeResults(
         std::cout << "    - central_ids\n";
         std::cout << "    - halo_masses\n";
         std::cout << "    - group_member_ids\n";
+        std::cout << "    - group_member_offsets\n";
         std::cout << "  /configuration/\n";
         std::cout << "    - selection_criteria\n";
         std::cout << "    - (attributes: kdtree_search_used, satellite_reclassification_performed, ...)\n";

@@ -50,6 +50,11 @@ struct HaloProps {
     double V_vir{};
 };
 
+struct GroupsResult {
+    std::vector<IDType> member_ids;
+    std::vector<IDType> offsets; // size = n_groups + 1, offsets[0] == 0
+};
+
 inline constexpr double GF_h = 0.6774; // Hubble parameter h
 inline constexpr double GF_H = GF_h*100.; // km/s/Mpc, can be defined from config
 inline constexpr double GF_G = 4.30091727e-9; // Mpc (km/s)^2 / Msun
@@ -134,7 +139,7 @@ public:
 
     double D_from_z(double z) const;
 
-    std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>>
+    std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
     run_once(
         const std::vector<double>& masses_unsorted,
         const std::vector<IDType>& groupcat_ids,
@@ -144,7 +149,7 @@ public:
         const double& Rmax, const double& scale,
         bool periodic = true);
 
-    std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>>
+    std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
     run_once_obs(
         const std::vector<double>& masses_unsorted,
         const std::vector<IDType>& groupcat_ids,
@@ -177,7 +182,7 @@ private:
     VelMethod vel_method;  // desired method for computing relative velocities
 
     // function for group classification
-    std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>>
+    std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
     classify(const double& Rmax, const double& scale, const bool& periodic);
 
     // general function for transforming the 3D vectors to projected components

@@ -101,6 +101,8 @@ int main(int argc, char* argv[]) {
     int dim = config_json["dim"].get<int>(); // 3 or 6 for simulation run
     bool use_distance = config_json["use_distance"].get<bool>();
     double omega_M = config_json["omega_M"].get<double>();
+    bool chunk = config_json.value("chunk", false);
+    size_t chunk_size = config_json.value("chunk_size", 1000000);
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -136,7 +138,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::vector<std::vector<IDType>> group_indices;
+        GroupsResult groups_result;
         std::vector<IDType> central_ids;
         std::vector<double> halo_masses;
         
@@ -150,7 +152,7 @@ int main(int argc, char* argv[]) {
                     galaxy_data.velocities, galaxy_data.ref_positions, galaxy_data.ref_velocities, 
                     R_max, B_scaling, periodic);
 
-            group_indices = std::get<0>(result);
+            groups_result = std::get<0>(result);
             central_ids = std::get<1>(result);
             halo_masses = std::get<2>(result);
 
@@ -164,7 +166,7 @@ int main(int argc, char* argv[]) {
                     galaxy_data.velocities, galaxy_data.ref_positions, galaxy_data.ref_velocities, 
                     R_max, B_scaling, periodic);
 
-            group_indices = std::get<0>(result);
+            groups_result = std::get<0>(result);
             central_ids = std::get<1>(result);
             halo_masses = std::get<2>(result);
         } else {
@@ -177,21 +179,21 @@ int main(int argc, char* argv[]) {
         std::int64_t isolated_count = 0;
         std::int64_t group_count = 0;
 
-        for (const auto& group : group_indices) {
+        std::int64_t n_groups = static_cast<std::int64_t>(groups_result.offsets.size()) - 1;
+        for (std::int64_t g = 0; g < n_groups; ++g) {
+            std::int64_t size = groups_result.offsets[g+1] - groups_result.offsets[g];
             total_groups++;
-            if (group.size() == 1) {
-                isolated_count++;
-            } else {
-                group_count += group.size();
-            }
+            if (size == 1) isolated_count++;
+            else group_count += size;
         }
-        std::cout << "MW " << (ref+1) << ": Total groups = " << total_groups
+        std::cout << "Run " << (ref+1) << ": Total groups = " << total_groups
                     << ", Isolated centrals = " << isolated_count
                     << ", Group members = " << group_count << std::endl;
 
         // Prepare results structs
         dataio::GroupFinderResults results;
-        results.group_member_ids = group_indices;
+        results.group_member_ids = std::move(groups_result.member_ids);
+        results.group_member_offsets = std::move(groups_result.offsets);
         results.central_ids = central_ids;
         results.halo_masses = halo_masses;
         
@@ -224,7 +226,7 @@ int main(int argc, char* argv[]) {
 
         // Write results 
         try {
-            dataio::HDF5Handler::writeResults(outfilenames[ref], results, output_config, stats, datetime.str());
+            dataio::HDF5Handler::writeResults(outfilenames[ref], results, output_config, stats, datetime.str(), chunk, chunk_size);
         } catch (const std::exception& e) {
             std::cerr << "Error writing results: " << e.what() << "\n";
             return 1;

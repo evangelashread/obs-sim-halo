@@ -132,6 +132,8 @@ class GroupFinderInterface:
         self.h = 0.6774  # Hubble parameter
         self.omega_M = 0.3089 # Matter density at z=0
         self.use_distance = True
+        self.chunk = False
+        self.chunk_size = 1_000_000
     def config(self, filename: str, manual=False, obs=False):
         # parse args 
         if manual is True:
@@ -190,6 +192,8 @@ class GroupFinderInterface:
                 "omega_M": self.omega_M,
                 "dim": self.dim if not obs else 3,
                 "use_distance": self.use_distance if obs else True,
+                "chunk": self.chunk,
+                "chunk_size": self.chunk_size,
             }, f, indent=4)
 
     def calculate_B(self, sim_data: SimulationData, obs_data: ObservationalData, mass_limit: float, R_sim: float, R_obs: float, cubic: bool = True) -> None:

@@ -1030,7 +1030,7 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
 }
 
 template<class D,class V>
-std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>> 
+std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
 GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& periodic) {
     /** @brief The work horse of the entire group finder */
 
@@ -1171,11 +1171,11 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
     for (size_t g = 0; g < tmp_groups.size(); ++g) {
         if (tmp_groups[g].empty()) continue;
         if (tmp_centrals[g] == IDType(-1)) {
-            // Skip orphan group (no surviving central, reclassified as satellite)
+            // Abort if we have a group with no surviving central
             std::cerr << "Error: Group " << g << " has no central. This should not happen.\n";
             std::abort();
         }
-        // Ensure central first
+        // Ensure central is first
         auto &members = tmp_groups[g];
         auto it = std::find(members.begin(), members.end(), tmp_centrals[g]);
         if (it != members.end() && it != members.begin()) {
@@ -1185,11 +1185,22 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
         central_global_indices.push_back(tmp_centrals[g]);
         halo_masses_final.push_back(tmp_halo_m[g]);
     }
-    return std::make_tuple(group_indices, central_global_indices, halo_masses_final);
+    // For faster I/O, flatten the ragged group_indices array
+    GroupsResult res;
+    res.offsets.resize(group_indices.size() + 1, 0);
+    for (size_t g = 0; g < group_indices.size(); ++g) {
+        res.offsets[g+1] = res.offsets[g] + static_cast<IDType>(group_indices[g].size());
+    }
+    res.member_ids.reserve(static_cast<size_t>(res.offsets.back()));
+    for (auto& members : group_indices) {
+        res.member_ids.insert(res.member_ids.end(), members.begin(), members.end());
+    }
+
+    return std::make_tuple(std::move(res), std::move(central_global_indices), std::move(halo_masses_final));
 }
 
 template<class D,class V>
-std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>> 
+std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::run_once(
         const std::vector<double>& masses_unsorted,
         const std::vector<IDType>& groupcat_ids,
@@ -1206,7 +1217,7 @@ GroupFinder<D,V>::run_once(
 }
 
 template<class D,class V>
-std::tuple<std::vector<std::vector<IDType>>, std::vector<IDType>, std::vector<double>> 
+std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::run_once_obs(
         const std::vector<double>& masses_unsorted,
         const std::vector<IDType>& groupcat_ids,

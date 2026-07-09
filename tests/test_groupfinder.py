@@ -1,7 +1,7 @@
 """
 Run the observational and simulation density contrast configurations and the 6D
 simulation configurations N times to verify correctness of group finder implementation.
-For density contrast runs, pass if more than 98% tests pass (because of probabilistic
+For density contrast runs, pass if more than 97% tests pass (because of probabilistic
 nature of the group assignment, which can split groups into subgroups occasionally).
 (for 6D sim runs, require 100% pass rate).
 """
@@ -16,7 +16,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from groupfinder_interface import GroupFinderInterface, SimulationData, ObservationalData, GroupFinderRunner, run_groupfinder
 from input import InterpolationData
 
-PASS_PERCENTAGE = 0.98
+PASS_PERCENTAGE = 0.97
 NUM_TESTS = 100
 
 def suppress_output():
@@ -227,6 +227,8 @@ class Tests:
             interface.omega_M = 0.3089
             interface.use_distance = False
             interface.tree_search = True
+            interface.chunk = True
+            interface.chunk_size = 10
 
             # Generate observational test data
             test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)

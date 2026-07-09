@@ -444,8 +444,10 @@ def check_results(input_file: str, result_file: str):
         #print(input_group_indices)
 
     with h5py.File(result_file, "r") as f:
-        found_group_indices = f['results']['group_member_ids'][:]
-        #print(found_group_indices)
+        member_ids = f['results']['group_member_ids'][:]
+        offsets = f['results']['group_member_offsets'][:]
+    found_group_indices = [member_ids[offsets[i]:offsets[i+1]] for i in range(len(offsets)-1)]
+    #print(found_group_indices)
 
     count_nonmatches = 0
     for input_group, found_group in zip(input_group_indices, found_group_indices):
@@ -484,7 +486,9 @@ def plot_groups(input_file: str, output_file: str, type: str):
         group_indices_i = f['group_indices'][:]
 
     with h5py.File(output_file, "r") as f:
-        group_indices_o = f['results']['group_member_ids'][:]
+        member_ids = f['results']['group_member_ids'][:]
+        offsets = f['results']['group_member_offsets'][:]
+    group_indices_o = [member_ids[offsets[i]:offsets[i+1]] for i in range(len(offsets)-1)]
 
     if type == "obs":
         # Convert spherical to Cartesian for plotting
