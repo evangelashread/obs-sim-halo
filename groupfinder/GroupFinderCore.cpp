@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <math.h>
 #include <string>
+//#include <malloc.h>
 
 namespace gf {
 
@@ -571,9 +572,17 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
     int reclassified = 0;
     size_t N = satellite_indices.size();
     std::vector<double> B_values(central_indices.size());
+    std::vector<IDType> cand;
+    std::vector<double> ratios;
+    std::vector<double> P_M_cands;
+    std::vector<IDType> new_cands;
+    cand.reserve(64);
+    ratios.reserve(64);
+    P_M_cands.reserve(64);
+    new_cands.reserve(64);
+
     for (size_t s = 0; s < N; ++s) {
         IDType local_s_id = satellite_indices[s]; // index into positions_sorted
-        std::vector<IDType> cand;
         if (config.tree_search) { // Returns local indices
             if (!config.obs) {
                 cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, Rmax); // returns value from central_indices
@@ -592,10 +601,9 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             std::cerr << "Error: No candidate centrals found for satellite index " << local_s_id << "\n";
             std::abort();
         }
-
-        std::vector<double> ratios;
-        std::vector<double> P_M_cands;
-        std::vector<IDType> new_cands;
+        ratios.clear();
+        P_M_cands.clear();
+        new_cands.clear();
         for (size_t k = 0; k < cand.size(); ++k) {
             size_t local_c_id = cand[k]; // index into positions_sorted
             auto tr = transform((size_t)local_c_id, (std::vector<IDType>){local_s_id});
@@ -744,9 +752,11 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
 
     size_t N = isolated_central_indices.size();
     int reclassified = 0;
+    std::vector<IDType> cand;
+    std::vector<double> ratios, P_M_cands, B_cands;
+    std::vector<double> relative_velocities, relative_distances, halo_radii, halo_velocities;
     for (size_t i = 0; i < N; ++i) {
         IDType local_i_id = isolated_central_indices[i];
-        std::vector<IDType> cand;
         if (config.tree_search) {
             if (!config.obs) {
                 cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, Rmax); // value from group_central_indices
@@ -764,13 +774,13 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             std::cout << "Warning: No candidate group centrals found for isolated central index " << local_i_id << "\n";
             continue;
         }
-        std::vector<double> ratios(cand.size());
-        std::vector<double> P_M_cands(cand.size());
-        std::vector<double> B_cands(cand.size());
-        std::vector<double> relative_velocities(cand.size());
-        std::vector<double> relative_distances(cand.size());
-        std::vector<double> halo_radii(cand.size());
-        std::vector<double> halo_velocities(cand.size());
+        ratios.resize(cand.size());
+        P_M_cands.resize(cand.size());
+        B_cands.resize(cand.size());
+        relative_velocities.resize(cand.size());
+        relative_distances.resize(cand.size());
+        halo_radii.resize(cand.size());
+        halo_velocities.resize(cand.size());
         for (size_t k = 0; k < cand.size(); ++k) {
             size_t local_gc_id = cand[k]; // index into positions_sorted
             auto tr = transform(local_gc_id, (std::vector<IDType>){local_i_id});
@@ -1020,12 +1030,16 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<double>& masses_unsorted
 
     if (config.tree_search) {
         cartesian_from_RA_Dec.resize(N);
-        std::vector<double> R_h_values(N);
-        for (size_t i = 0; i < N; ++i) {
-            R_h_values[i] = halo_props[i].R_h;
+        if (config.R_h_max_override > 0.0) {
+            R_h_max = config.R_h_max_override;
+        } else {
+            std::vector<double> R_h_values(N);
+            for (size_t i = 0; i < N; ++i) {
+                R_h_values[i] = halo_props[i].R_h;
+            }
+            auto it = std::max_element(R_h_values.begin(), R_h_values.end(), [](const double& a, const double& b) { return a < b; });
+            R_h_max = static_cast<double>(*it);
         }
-        auto it = std::max_element(R_h_values.begin(), R_h_values.end(), [](const double& a, const double& b) { return a < b; });
-        R_h_max = static_cast<double>(*it);
     }
 }
 
@@ -1202,10 +1216,10 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
 template<class D,class V>
 std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::run_once(
-        const std::vector<double>& masses_unsorted,
-        const std::vector<IDType>& groupcat_ids,
-        const std::vector<Vec3>& positions_box,
-        const std::vector<Vec3>& velocities_pec,
+        std::vector<double>& masses_unsorted,
+        std::vector<IDType>& groupcat_ids,
+        std::vector<Vec3>& positions_box,
+        std::vector<Vec3>& velocities_pec,
         const Vec3& MW_pos_box, const Vec3& MW_vel_pec, 
         const double& Rmax, const double& scale, bool periodic) {
     /**
@@ -1213,22 +1227,40 @@ GroupFinder<D,V>::run_once(
      * Gets called directly by external code.
      */
     initialize(masses_unsorted, groupcat_ids, positions_box, velocities_pec, MW_pos_box, MW_vel_pec, periodic);
+    masses_unsorted.clear();
+    groupcat_ids.clear();
+    positions_box.clear();
+    velocities_pec.clear();
+    masses_unsorted.shrink_to_fit();
+    groupcat_ids.shrink_to_fit();
+    positions_box.shrink_to_fit();
+    velocities_pec.shrink_to_fit();
+    //malloc_trim(0);
     return classify(Rmax, scale, periodic);
 }
 
 template<class D,class V>
 std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>> 
 GroupFinder<D,V>::run_once_obs(
-        const std::vector<double>& masses_unsorted,
-        const std::vector<IDType>& groupcat_ids,
-        const std::vector<Vec3>& positions,
-        const std::vector<double>& velocities_los,
+        std::vector<double>& masses_unsorted,
+        std::vector<IDType>& groupcat_ids,
+        std::vector<Vec3>& positions,
+        std::vector<double>& velocities_los,
         const double& Rmax, const double& scale,
         bool periodic) {
     /**
      * @brief High-level function for running the observational group finder.
      */
     initialize_obs(masses_unsorted, groupcat_ids, positions, velocities_los);
+    masses_unsorted.clear();
+    groupcat_ids.clear();
+    positions.clear();
+    velocities_los.clear();
+    masses_unsorted.shrink_to_fit();
+    groupcat_ids.shrink_to_fit();
+    positions.shrink_to_fit();
+    velocities_los.shrink_to_fit();
+    //malloc_trim(0);
     return classify(Rmax, scale, periodic);
 }
 };

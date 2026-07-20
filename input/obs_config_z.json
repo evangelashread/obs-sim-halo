@@ -12,11 +12,12 @@
     "box_size": null,
     "R_max": 350.0,
     "periodic": false,
-    "B_scaling": 0.1447706770981672,
+    "B_scaling": 0.14720672214549216,
     "h": 0.6774,
     "omega_M": 0.3089,
     "dim": 3,
     "use_distance": false,
     "chunk": true,
-    "chunk_size": 10
+    "chunk_size": 10,
+    "R_h_max_override": -1.0
 }

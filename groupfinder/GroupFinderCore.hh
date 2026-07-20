@@ -116,6 +116,7 @@ struct GroupFinderSettings {
     bool contrast; // True or false
     bool use_distance; // True if using distance and peculiar velocity for obs classification, False if using redshift and velocity for obs classification
                         // This is generally always true for simulation data, since redshifts can be computed from distances and velocities in this code
+    double R_h_max_override;
 };
 
 class AboriaNeighborBuilder; // Forward declare the kd tree builder class
@@ -141,20 +142,20 @@ public:
 
     std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
     run_once(
-        const std::vector<double>& masses_unsorted,
-        const std::vector<IDType>& groupcat_ids,
-        const std::vector<Vec3>& positions_box,
-        const std::vector<Vec3>& velocities_pec,
+        std::vector<double>& masses_unsorted,
+        std::vector<IDType>& groupcat_ids,
+        std::vector<Vec3>& positions_box,
+        std::vector<Vec3>& velocities_pec,
         const Vec3& MW_pos_box, const Vec3& MW_vel_pec,
         const double& Rmax, const double& scale,
         bool periodic = true);
 
     std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
     run_once_obs(
-        const std::vector<double>& masses_unsorted,
-        const std::vector<IDType>& groupcat_ids,
-        const std::vector<Vec3>& positions_unsorted,
-        const std::vector<double>& velocities_los,
+        std::vector<double>& masses_unsorted,
+        std::vector<IDType>& groupcat_ids,
+        std::vector<Vec3>& positions_unsorted,
+        std::vector<double>& velocities_los,
         const double& Rmax, const double& scale,
         bool periodic = false);
 

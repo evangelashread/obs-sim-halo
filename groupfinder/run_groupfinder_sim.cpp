@@ -103,6 +103,7 @@ int main(int argc, char* argv[]) {
     double omega_M = config_json["omega_M"].get<double>();
     bool chunk = config_json.value("chunk", false);
     size_t chunk_size = config_json.value("chunk_size", 1000000);
+    double R_h_max_override = config_json.value("R_h_max_override", -1.0);
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -119,7 +120,8 @@ int main(int argc, char* argv[]) {
         sat_reclass_val,
         iso_reclass_val,
         contrast_val,
-        use_distance
+        use_distance,
+        R_h_max_override,
     };
 
     // Run for each input file

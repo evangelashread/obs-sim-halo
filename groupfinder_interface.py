@@ -19,26 +19,42 @@ class SimulationData:
     ref_ids: np.ndarray = None  # optional, shape: (n_ref,) ids for the reference point(s)
     group_indices: np.ndarray = None  # optional, shape: (n_galaxies,) grouped galaxy ids if pre-grouped
     
-    def __post_init__(self):
-        """Validate that all arrays have consistent lengths and expected shapes."""
-        n = len(self.positions)
-        if not (len(self.velocities) == len(self.positions) == len(self.masses) == len(self.ids) == n):
+    @staticmethod
+    def validate_arrays(masses, ids, positions, velocities):
+        """Shape/length check for input data. Can be called on whole data arrays or chunked data."""
+        masses = np.asarray(masses)
+        ids = np.asarray(ids)
+        positions = np.asarray(positions)
+        velocities = np.asarray(velocities)
+
+        n = len(positions)
+        if not (len(velocities) == len(positions) == len(masses) == len(ids) == n):
             raise ValueError("All data arrays must have the same length")
-        if self.positions.shape != (n, 3):
+        if positions.shape != (n, 3):
             raise ValueError("Positions array must have shape (n_galaxies, 3)")
-        if self.velocities.shape != (n, 3):
+        if velocities.shape != (n, 3):
             raise ValueError("Velocities array must have shape (n_galaxies, 3)")
-        if self.ref_positions is not None and self.ref_velocities is not None:
-            if not (len(self.ref_velocities) == len(self.ref_positions)):
-                raise ValueError("All reference point arrays must have the same length")
-        else:
-            self.ref_positions = np.zeros((1, 3))  # placeholder zero if no reference positions provided
-            self.ref_velocities = np.zeros((1, 3))  # placeholder zero if no reference velocities provided
-        if self.ref_positions.shape != (3,) and self.ref_positions.shape[0] != 1:
+
+    @staticmethod
+    def validate_ref_point(ref_positions, ref_velocities):
+        """Check data for the single reference point."""
+        ref_positions = np.asarray(ref_positions)
+        ref_velocities = np.asarray(ref_velocities)
+        if len(ref_velocities) != len(ref_positions):
+            raise ValueError("All reference point arrays must have the same length")
+        if ref_positions.shape != (3,) and ref_positions.shape[0] != 1:
             raise ValueError("Position array must have shape (3,) or (1, 3)")
-        if self.ref_velocities.shape != (3,) and self.ref_velocities.shape[0] != 1:
+        if ref_velocities.shape != (3,) and ref_velocities.shape[0] != 1:
             raise ValueError("Velocity array must have shape (3,) or (1, 3)")
-    
+
+    def __post_init__(self):
+        """Validate that all arrays have consistent lengths and shapes."""
+        SimulationData.validate_arrays(self.masses, self.ids, self.positions, self.velocities)
+        if self.ref_positions is None or self.ref_velocities is None:
+            self.ref_positions = np.zeros((1, 3))
+            self.ref_velocities = np.zeros((1, 3))
+        SimulationData.validate_ref_point(self.ref_positions, self.ref_velocities)
+
     def write_to_hdf5(self, filename: str):
         """Write the simulation data to an HDF5 file."""
         with h5py.File(filename, 'w') as f:
@@ -68,20 +84,38 @@ class ObservationalData:
     velocities: np.ndarray = None  # Shape: (n_observed,) for line-of-sight/heliocentric velocities
     group_indices: np.ndarray = None  # optional, shape: (n_observed,) galaxy group ids if pre-grouped
 
+    @staticmethod
+    def validate_arrays(masses, ids, positions, velocities=None):
+        """Shape/value check on input data. Can be called on whole data arrays or chunks."""
+        masses = np.asarray(masses)
+        ids = np.asarray(ids)
+        positions = np.asarray(positions)
+        n = len(positions)
+        if not (len(masses) == len(positions) == len(ids) == n):
+            raise ValueError("All data arrays must have the same length")
+        if positions.ndim != 2 or positions.shape[1] != 3:
+            raise ValueError("Positions array must have shape (n, 3) corresponding to (distance/z, Dec, RA)")
+
+        dec = positions[:, 1]
+        ra = positions[:, 2]
+        tol = 1e-6
+        if np.any((dec < -np.pi / 2 - tol) | (dec > np.pi / 2 + tol)):
+            raise ValueError("Dec values out of bounds [-pi/2, pi/2]")
+        if np.any((ra < -tol) | (ra >= 2 * np.pi + tol)):
+            raise ValueError("RA values out of bounds [0, 2*pi)")
+
+        if velocities is not None:
+            velocities = np.asarray(velocities)
+            if velocities.ndim != 1:
+                raise ValueError("Velocities array must be one-dimensional corresponding to heliocentric velocities")
+            if len(velocities) != n:
+                raise ValueError("Velocities array must have the same length as positions and masses")
+
     def __post_init__(self):
         """Validate that all arrays have consistent lengths and expected shapes."""
-        n = len(self.positions)
-        if not (len(self.masses) == len(self.positions) == len(self.ids) == n):
-            raise ValueError("All data arrays must have the same length")
-        if self.positions.shape[1] != 3:
-            raise ValueError("Positions array must have shape (n_observed, 3) corresponding to spherical coordinates (distance, Dec, RA)")
-        if self.velocities is not None:
-            if self.velocities.ndim != 1:
-                raise ValueError("Velocities array must be one-dimensional corresponding to heliocentric velocities")
-            if len(self.velocities) != n:
-                raise ValueError("Velocities array must have the same length as positions and masses")
-        else:
-            self.velocities = [0.]  # placeholder zero if no velocities provided
+        ObservationalData.validate_arrays(self.masses, self.ids, self.positions, self.velocities)
+        if self.velocities is None:
+            self.velocities = [0.]
 
     def prep_coords(self, RA: np.ndarray, Dec: np.ndarray, distances: np.ndarray):
         """
@@ -134,43 +168,9 @@ class GroupFinderInterface:
         self.use_distance = True
         self.chunk = False
         self.chunk_size = 1_000_000
-    def config(self, filename: str, manual=False, obs=False):
-        # parse args 
-        if manual is True:
-            print("Group Finder Configuration")
-            self.R_h_group = float(input(f'R_h_group (satellites grouped if d < R_h_group * R_h) [current={self.R_h_group}]: ') or self.R_h_group)
-            self.V_vir_group = float(input(f'V_vir_group (satellites grouped if v < V_vir_group * V_vir) [current={self.V_vir_group}]: ') or self.V_vir_group)
-            self.R_h_iso = float(input(f'R_h_iso (galaxy is isolated if d > R_h_iso * R_h) [current={self.R_h_iso}]: ') or self.R_h_iso)
-            self.V_vir_iso = float(input(f'V_vir_iso (galaxy is isolated if v > V_vir_iso * V_vir) [current={self.V_vir_iso}]: ') or self.V_vir_iso)
-            self.sat_reclass = input(f'Satellite reclassification (True/False) [current={self.sat_reclass}]: ').lower() in ('true', '1', 'yes') if input else self.sat_reclass
-            self.iso_reclass = input(f'Isolated galaxy reclassification (True/False) [current={self.iso_reclass}]: ').lower() in ('true', '1', 'yes') if input else self.iso_reclass
-            self.contrast = input(f'Density-contrast-based classification (True/False) [current={self.contrast}]: ').lower() in ('true', '1', 'yes') if input else self.contrast
-            self.R_max = float(input(f'Max search radius R_max [current={self.R_max}]: ') or self.R_max)
-            self.B_scaling = float(input(f'B scaling factor for density-contrast classification [current={self.B_scaling}]: ') or self.B_scaling)
-            self.h = float(input(f'Dimensionless Hubble parameter h = H0 / (100 km/s/Mpc) [current={self.h}]: ') or self.h)
-            self.omega_M = float(input(f'Matter density at z=0 [current={self.omega_M}]: ') or self.omega_M)
-            self.tree_search = input(f'Use tree search (True/False) [current={self.tree_search}]: ').lower() in ('true', '1', 'yes') if input else self.tree_search
-            if obs is False:
-                self.dim = int(input(f'Data dimension (3 for RA/Dec/velocity, 6 for x/y/z/vx/vy/vz) [current={self.dim}]: ') or self.dim)
-                self.box_size = float(input(f'Box size [current={self.box_size}]: ') or self.box_size)
-                self.periodic = input(f'Periodic boundary conditions (True/False) [current={self.periodic}]: ').lower() in ('true', '1', 'yes') if input else self.periodic
-                if self.contrast is False:
-                    self.vel_cut = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut
-                else:
-                    pass  # velocity cut not applicable for density-contrast classification
-            else: # observational data
-                self.use_distance = input(f'Use comoving distance and peculiar velocity (True); otherwise, use redshift only (False) [current={self.use_distance}]: ').lower() in ('true', '1', 'yes') if input else self.use_distance
-                if self.use_distance: 
-                    if self.contrast is False:
-                        self.vel_cut = input(f'Use peculiar velocity in classification (True/False) [current={self.vel_cut}]: ').lower() in ('true', '1', 'yes') if input else self.vel_cut
-                else:
-                    self.vel_cut = False
-                # observational data does not require box size
-                # assumes non-periodic by default, and tree search not applicable for RA/Dec/velocity data
-            
-        else:
-            pass  # use default values
-        
+        self.R_h_max_override = -1.0 # option to override the default behavior of calculating a maximum search radius from the precomputed halo properties for all potential halos
+            # Optionally set R_h_max to a value >0 Mpc 
+    def config(self, filename: str, obs=False):
         # write values to json file
         with open(filename, 'w') as f:
             json.dump({
@@ -194,6 +194,7 @@ class GroupFinderInterface:
                 "use_distance": self.use_distance if obs else True,
                 "chunk": self.chunk,
                 "chunk_size": self.chunk_size,
+                "R_h_max_override": self.R_h_max_override,
             }, f, indent=4)
 
     def calculate_B(self, sim_data: SimulationData, obs_data: ObservationalData, mass_limit: float, R_sim: float, R_obs: float, cubic: bool = True) -> None:

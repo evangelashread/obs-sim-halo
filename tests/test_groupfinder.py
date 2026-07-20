@@ -232,7 +232,7 @@ class Tests:
 
             # Generate observational test data
             test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)
-            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=6, redshift=True)
+            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=7, n_sats=40, redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
                 obs_positions = np.array(f['positions'][:]) # already in (redshift, ra [rad], dec [rad])
@@ -246,7 +246,7 @@ class Tests:
             
             # Generate simulation test data for B parameter calculation (do not need to make new config)
             test_sim = GroupFinderTest(box_size=300, h=interface.h, omega_M=interface.omega_M)
-            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=7, origin=True, redshift=True)
+            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=8, n_sats=40, origin=True, redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/sim_data.h5"), "r") as f:
                 sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]
