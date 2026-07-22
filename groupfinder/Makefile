@@ -1,11 +1,12 @@
 CXX := g++
 # Edit the first two -I flags to point to the Aboria (/path/to/Aboria/src) and include directories (/path/to/include/directory) on your system
 # Usually the include path is your home directory (~) or /usr/local/include
-CXXFLAGS := -I/path/to/Aboria/src -I/path/to/include/directory -O2 -std=c++17 -Wall -Wextra -march=native -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
+# May also need paths for OpenMP and HDF5
+CXXFLAGS := -I/path/to/Aboria/src -I/path/to/include -I/path/to/libomp/include -I/path/to/hdf5/include -O2 -std=c++17 -Wall -Wextra -march=armv8.5-a -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
 
-# You'll possibly have to edit these two flags too
-HDF5_CXXFLAGS = -I/usr/include/hdf5/serial
-HDF5_LDFLAGS = -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_cpp -lhdf5
+# You'll possibly have to edit these two flags too; currently configured for macOS
+HDF5_CXXFLAGS = -I/opt/homebrew/opt/hdf5/include
+HDF5_LDFLAGS = -L/opt/homebrew/opt/hdf5/lib -lhdf5_cpp -lhdf5
 
 SOURCES := GroupFinderCore.cpp GroupFinderStatistics.cpp DataIO.cpp
 BUILD_DIR := build

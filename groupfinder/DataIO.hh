@@ -8,21 +8,20 @@
 #include <cstring>
 #include <stdexcept>
 #include <iostream>
-#include <hdf5/serial/H5Cpp.h>
+#include "Types.hh"
+#include <H5Cpp.h>
 
 namespace dataio {
-
-using IDType = std::int64_t;
 
 /**
  * @brief Input observational data
  * Positions are assumed to be in spherical coords (radial distance, RA, Dec)
  */
 struct ObsInputData {
-    std::vector<double> masses;
-    std::vector<std::array<double, 3>> positions; // 
+    std::vector<FloatType> masses;
+    std::vector<std::array<FloatType, 3>> positions; // 
     std::vector<IDType> ids;
-    std::vector<double> velocities;
+    std::vector<FloatType> velocities;
 };
 
 /**
@@ -30,12 +29,12 @@ struct ObsInputData {
  * Positions are assumed to be in Cartesian coords (x, y, z)
  */
 struct SimInputData {
-    std::vector<double> masses;
-    std::vector<std::array<double, 3>> positions;
+    std::vector<FloatType> masses;
+    std::vector<std::array<FloatType, 3>> positions;
     std::vector<IDType> ids;
-    std::array<double, 3> ref_positions;
-    std::array<double, 3> ref_velocities;
-    std::vector<std::array<double, 3>> velocities;
+    std::array<FloatType, 3> ref_positions;
+    std::array<FloatType, 3> ref_velocities;
+    std::vector<std::array<FloatType, 3>> velocities;
 };
 
 /**
@@ -54,7 +53,7 @@ struct RedshiftDistanceData {
 
 struct GroupFinderResults {
     std::vector<IDType> central_ids;
-    std::vector<double> halo_masses;
+    std::vector<FloatType> halo_masses;
     std::vector<IDType> group_member_ids;
     std::vector<IDType> group_member_offsets; // size n_groups + 1
 };

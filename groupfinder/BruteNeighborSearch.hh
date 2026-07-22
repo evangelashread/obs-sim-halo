@@ -1,4 +1,5 @@
 #include "GroupFinderCore.hh"
+#include "Types.hh"
 #include <cmath>
 #include <algorithm>
 

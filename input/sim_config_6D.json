@@ -5,10 +5,10 @@
     "R_h_iso": 2.0,
     "V_vir_iso": 3.0,
     "vel_cut": true,
-    "tree_search": false,
+    "tree_search": true,
     "sat_reclass": true,
     "iso_reclass": true,
-    "contrast": true,
+    "contrast": false,
     "box_size": 51.668142899320934,
     "R_max": 44.74592431717649,
     "periodic": true,
@@ -19,5 +19,6 @@
     "use_distance": true,
     "chunk": false,
     "chunk_size": 1000000,
-    "R_h_max_override": -1.0
+    "R_h_max_override": -1.0,
+    "use_nanoflann": false
 }

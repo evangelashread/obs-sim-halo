@@ -1,3 +1,4 @@
+#include "Types.hh"
 #include <vector>
 #include <algorithm>
 #include <array>
@@ -5,8 +6,6 @@
 #include <tuple>
 #include <cassert>
 #include <cstdint>
-
-using IDType = std::int64_t;
 
 double Median(std::vector<double> data);
 

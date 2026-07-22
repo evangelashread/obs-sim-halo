@@ -1,7 +1,8 @@
 #include "DataIO.hh"
+#include "Types.hh"
 #include <cstring>
 #include <algorithm>
-#include <hdf5/serial/H5Cpp.h>
+#include <H5Cpp.h>
 
 namespace dataio {
 
@@ -151,25 +152,25 @@ ObsInputData HDF5Handler::readObsData(const std::string& filename) {
         // masses = 1D array
         {
             H5::DataSet dataset = file.openDataSet("masses");
-            data.masses = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.masses = readDataset1D<FloatType>(dataset, HDF5FloatType<FloatType>::value());
         }
         
         // positions = 2D array
         {
             H5::DataSet dataset = file.openDataSet("positions");
-            data.positions = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.positions = readDataset2D<FloatType, 3>(dataset, HDF5FloatType<FloatType>::value());
         }
         
         // ids = 1D array
         {
             H5::DataSet dataset = file.openDataSet("ids");
-            data.ids = readDataset1D<std::int64_t>(dataset, H5::PredType::NATIVE_INT64);
+            data.ids = readDataset1D<IDType>(dataset, HDF5IntType<IDType>::value());
         }
         
         // velocities = 1D array
         {
             H5::DataSet dataset = file.openDataSet("velocities");
-            data.velocities = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.velocities = readDataset1D<FloatType>(dataset, HDF5FloatType<FloatType>::value());
         }
         
         file.close();
@@ -190,19 +191,19 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
         // masses = 1D array
         {
             H5::DataSet dataset = file.openDataSet("masses");
-            data.masses = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.masses = readDataset1D<FloatType>(dataset, HDF5FloatType<FloatType>::value());
         }
         
         // positions = 2D array
         {
             H5::DataSet dataset = file.openDataSet("positions");
-            data.positions = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.positions = readDataset2D<FloatType, 3>(dataset, HDF5FloatType<FloatType>::value());
         }
         
         // ref positions = single reference point from 2D array, so shape (3,)
         {
             H5::DataSet dataset = file.openDataSet("ref_positions");
-            auto ref_pos_vec = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
+            auto ref_pos_vec = readDataset2D<FloatType, 3>(dataset, HDF5FloatType<FloatType>::value());
             if (ref_pos_vec.empty()) {
                 throw std::runtime_error("ref_positions dataset is empty");
             }
@@ -212,7 +213,7 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
         // ref velocities = single reference point from 2D array
         {
             H5::DataSet dataset = file.openDataSet("ref_velocities");
-            auto ref_vel_vec = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
+            auto ref_vel_vec = readDataset2D<FloatType, 3>(dataset, HDF5FloatType<FloatType>::value());
             if (ref_vel_vec.empty()) {
                 throw std::runtime_error("ref_velocities dataset is empty");
             }
@@ -222,13 +223,13 @@ SimInputData HDF5Handler::readSimData(const std::string& filename) {
         // ids = 1D array
         {
             H5::DataSet dataset = file.openDataSet("ids");
-            data.ids = readDataset1D<std::int64_t>(dataset, H5::PredType::NATIVE_INT64);
+            data.ids = readDataset1D<IDType>(dataset, HDF5IntType<IDType>::value());
         }
         
         // velocities = 2D array
         {
             H5::DataSet dataset = file.openDataSet("velocities");
-            data.velocities = readDataset2D<double, 3>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.velocities = readDataset2D<FloatType, 3>(dataset, HDF5FloatType<FloatType>::value());
         }
         
         file.close();
@@ -328,10 +329,10 @@ void HDF5Handler::writeResults(
         // Create root group for group member id results, halo masses, etc
         H5::Group results_group(file.createGroup("/results"));
 
-        writeDataset1D(results_group, "central_ids", results.central_ids, H5::PredType::NATIVE_INT64, chunk, chunk_size);
-        writeDataset1D(results_group, "halo_masses", results.halo_masses, H5::PredType::NATIVE_DOUBLE, chunk, chunk_size);
-        writeDataset1D(results_group, "group_member_ids", results.group_member_ids, H5::PredType::NATIVE_INT64, chunk, chunk_size);
-        writeDataset1D(results_group, "group_member_offsets", results.group_member_offsets, H5::PredType::NATIVE_INT64, chunk, chunk_size);
+        writeDataset1D(results_group, "central_ids", results.central_ids, HDF5IntType<IDType>::value(), chunk, chunk_size);
+        writeDataset1D(results_group, "halo_masses", results.halo_masses, HDF5FloatType<FloatType>::value(), chunk, chunk_size);
+        writeDataset1D(results_group, "group_member_ids", results.group_member_ids, HDF5IntType<IDType>::value(), chunk, chunk_size);
+        writeDataset1D(results_group, "group_member_offsets", results.group_member_offsets, HDF5IntType<IDType>::value(), chunk, chunk_size);
 
         // Create configuration group
         H5::Group config_group(file.createGroup("/configuration"));
@@ -409,7 +410,7 @@ void HDF5Handler::writeResults(
         // Output statistics group
         H5::Group stats_group(file.createGroup("/statistics"));
 
-        std::int64_t stats_data[] = {stats.total_groups, stats.isolated_count, stats.group_count};
+        IDType stats_data[] = {stats.total_groups, stats.isolated_count, stats.group_count};
         hsize_t dims[1] = {3};
         H5::DataSpace dataspace(1, dims);
         H5::DataSet dataset = stats_group.createDataSet("group_stats", 
@@ -430,18 +431,18 @@ void HDF5Handler::writeResults(
         
         file.close();
         // Overall structure of output files
-        std::cout << "Wrote HDF5 output: " << filename << "\n";
-        std::cout << "File structure:\n";
-        std::cout << "  /results/\n";
-        std::cout << "    - central_ids\n";
-        std::cout << "    - halo_masses\n";
-        std::cout << "    - group_member_ids\n";
-        std::cout << "    - group_member_offsets\n";
-        std::cout << "  /configuration/\n";
-        std::cout << "    - selection_criteria\n";
-        std::cout << "    - (attributes: kdtree_search_used, satellite_reclassification_performed, ...)\n";
-        std::cout << "  /statistics/\n";
-        std::cout << "    - group_stats\n";
+        std::cout << "Wrote HDF5 output: " << filename << std::endl;
+        std::cout << "File structure:" << std::endl;
+        std::cout << "  /results/" << std::endl;
+        std::cout << "    - central_ids" << std::endl;
+        std::cout << "    - halo_masses" << std::endl;
+        std::cout << "    - group_member_ids" << std::endl;
+        std::cout << "    - group_member_offsets" << std::endl;
+        std::cout << "  /configuration/" << std::endl;
+        std::cout << "    - selection_criteria" << std::endl;
+        std::cout << "    - (attributes: kdtree_search_used, satellite_reclassification_performed, ...)" << std::endl;
+        std::cout << "  /statistics/" << std::endl;
+        std::cout << "    - group_stats" << std::endl;
         
     } catch (const H5::Exception& e) {
         throw std::runtime_error("HDF5 error writing results: " + std::string(e.getCDetailMsg()));

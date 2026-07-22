@@ -1,4 +1,5 @@
 #include "GroupFinderStatistics.hh"
+#include "Types.hh"
 #include <vector>
 #include <algorithm>
 #include <array>
@@ -7,8 +8,6 @@
 #include <cassert>
 #include <cstdint>
 #include <iterator>
-
-using IDType = std::int64_t;
 
 /* 
 Module for statistical calculations in C++.

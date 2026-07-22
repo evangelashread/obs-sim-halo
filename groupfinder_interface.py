@@ -170,6 +170,7 @@ class GroupFinderInterface:
         self.chunk_size = 1_000_000
         self.R_h_max_override = -1.0 # option to override the default behavior of calculating a maximum search radius from the precomputed halo properties for all potential halos
             # Optionally set R_h_max to a value >0 Mpc 
+        self.use_nanoflann = False
     def config(self, filename: str, obs=False):
         # write values to json file
         with open(filename, 'w') as f:
@@ -195,6 +196,7 @@ class GroupFinderInterface:
                 "chunk": self.chunk,
                 "chunk_size": self.chunk_size,
                 "R_h_max_override": self.R_h_max_override,
+                "use_nanoflann": self.use_nanoflann,
             }, f, indent=4)
 
     def calculate_B(self, sim_data: SimulationData, obs_data: ObservationalData, mass_limit: float, R_sim: float, R_obs: float, cubic: bool = True) -> None:

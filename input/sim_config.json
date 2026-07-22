@@ -19,5 +19,6 @@
     "use_distance": true,
     "chunk": false,
     "chunk_size": 1000000,
-    "R_h_max_override": -1.0
+    "R_h_max_override": -1.0,
+    "use_nanoflann": false
 }

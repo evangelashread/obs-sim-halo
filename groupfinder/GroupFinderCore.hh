@@ -1,4 +1,5 @@
 #pragma once
+#include "Types.hh"
 #include <vector>
 #include <array>
 #include <functional>
@@ -11,9 +12,6 @@
 #include <algorithm>
 
 namespace gf {
-
-using Vec3 = std::array<double,3>;
-using IDType = std::int64_t;
 
 struct BehrooziParams {
     double EPS_0 = -1.435,
@@ -45,9 +43,9 @@ struct SelectionCriteria {
 };
 
 struct HaloProps {
-    double M_h{};
-    double R_h{};
-    double V_vir{};
+    FloatType M_h{};
+    FloatType R_h{};
+    FloatType V_vir{};
 };
 
 struct GroupsResult {
@@ -117,6 +115,7 @@ struct GroupFinderSettings {
     bool use_distance; // True if using distance and peculiar velocity for obs classification, False if using redshift and velocity for obs classification
                         // This is generally always true for simulation data, since redshifts can be computed from distances and velocities in this code
     double R_h_max_override;
+    bool use_nanoflann;
 };
 
 class AboriaNeighborBuilder; // Forward declare the kd tree builder class
@@ -140,9 +139,9 @@ public:
 
     double D_from_z(double z) const;
 
-    std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
+    std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
     run_once(
-        std::vector<double>& masses_unsorted,
+        std::vector<FloatType>& masses_unsorted,
         std::vector<IDType>& groupcat_ids,
         std::vector<Vec3>& positions_box,
         std::vector<Vec3>& velocities_pec,
@@ -150,12 +149,12 @@ public:
         const double& Rmax, const double& scale,
         bool periodic = true);
 
-    std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
+    std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
     run_once_obs(
-        std::vector<double>& masses_unsorted,
+        std::vector<FloatType>& masses_unsorted,
         std::vector<IDType>& groupcat_ids,
         std::vector<Vec3>& positions_unsorted,
-        std::vector<double>& velocities_los,
+        std::vector<FloatType>& velocities_los,
         const double& Rmax, const double& scale,
         bool periodic = false);
 
@@ -166,16 +165,15 @@ private:
     bool periodic;
     double R_h_max; // computed once at runtime, only if configured in observation mode with tree search
     std::vector<IDType> groupcat_ids_sorted; // sorted groupcat ids
-    std::vector<double> masses_sorted;  // sorted masses in log_10 solar masses
+    std::vector<FloatType> masses_sorted;  // sorted masses in log_10 solar masses
     std::vector<Vec3> positions_sorted; // sorted 3D cartesian/spherical positions
     std::vector<Vec3> cartesian_from_RA_Dec; // used for a tree search in obsevational (RA/dec) mode
     std::vector<Vec3> velocities_sorted; // sorted 3D velocities
-    std::vector<double> velocities_sorted_obs;
+    std::vector<FloatType> velocities_sorted_obs;
     std::vector<Vec3> MWcoords;  // sorted minimal-image of each position relative to the MW position
-    std::vector<int> mass_order;  // sorted indices by descending mass
     std::vector<IDType> group_label; // local group labels (central local index)
-    std::vector<int> classification; // 0 = group central, 1 = isolated central, 2 = satellite
-    std::vector<double> total_redshifts;
+    std::vector<std::int8_t> classification; // 0 = group central, 1 = isolated central, 2 = satellite
+    std::vector<FloatType> total_redshifts;
 
     std::vector<IDType> local_ids; // local indices [0, N-1] into sorted arrays
 
@@ -183,23 +181,23 @@ private:
     VelMethod vel_method;  // desired method for computing relative velocities
 
     // function for group classification
-    std::tuple<GroupsResult, std::vector<IDType>, std::vector<double>>
+    std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
     classify(const double& Rmax, const double& scale, const bool& periodic);
 
     // general function for transforming the 3D vectors to projected components
     TransformOutput transform(size_t central_local, const std::vector<IDType>& local_indices) const;
     
-    void initialize(const std::vector<double>& masses_unsorted,
+    void initialize(const std::vector<FloatType>& masses_unsorted,
             const std::vector<IDType>& groupcat_ids,
             const std::vector<Vec3>& positions_box,
             const std::vector<Vec3>& velocities_pec,
             const Vec3& MW_pos_box, const Vec3& MW_vel_pec,
             bool periodic);
 
-    void initialize_obs(const std::vector<double>& masses_unsorted,
+    void initialize_obs(const std::vector<FloatType>& masses_unsorted,
             const std::vector<IDType>& groupcat_ids,
             const std::vector<Vec3>& positions_unsorted,
-            const std::vector<double>& velocities_los);
+            const std::vector<FloatType>& velocities_los);
     
     std::unique_ptr<AboriaNeighborBuilder> tree;
     std::vector<HaloProps> halo_props;
@@ -208,7 +206,7 @@ private:
 
     void reassign_isolated(double Rmax, bool periodic, const double& scale);
 
-    std::array<double,2> density_contrast(int local_c_id, double trans_dist, double rel_vel);
+    std::array<double,2> density_contrast(IDType local_c_id, double trans_dist, double rel_vel);
 
     std::vector<double> tab_logM_c_; // log mass
     std::vector<std::vector<double>> tab_logc_;  // log concentration

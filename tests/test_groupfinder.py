@@ -48,15 +48,15 @@ class Tests:
         runner = GroupFinderRunner()
 
         # Set up config once for all sim tests
-        interface_sim.R_h_group_val = 1.0
-        interface_sim.V_vir_group_val = 3.0
-        interface_sim.R_h_iso_val = 2.0
-        interface_sim.V_vir_iso_val = 3.0
-        interface_sim.contrast_val = True
+        interface_sim.R_h_group = 1.0
+        interface_sim.V_vir_group = 3.0
+        interface_sim.R_h_iso = 2.0
+        interface_sim.V_vir_iso = 3.0
+        interface_sim.contrast = True
         interface_sim.dim = 3
-        interface_sim.tree_search_val = False
-        interface_sim.sat_reclass_val = True
-        interface_sim.iso_reclass_val = True
+        interface_sim.tree_search = False
+        interface_sim.sat_reclass = True
+        interface_sim.iso_reclass = True
         interface_sim.B_scaling = 1.
         interface_sim.h = 0.6774
         interface_sim.omega_M = 0.3089
@@ -93,13 +93,13 @@ class Tests:
             runner = GroupFinderRunner()
 
             # Set up config
-            interface.R_h_group_val = 1.0
-            interface.V_vir_group_val = 3.0
-            interface.R_h_iso_val = 2.0
-            interface.V_vir_iso_val = 3.0
-            interface.contrast_val = True
-            interface.sat_reclass_val = True
-            interface.iso_reclass_val = True
+            interface.R_h_group = 1.0
+            interface.V_vir_group = 3.0
+            interface.R_h_iso = 2.0
+            interface.V_vir_iso = 3.0
+            interface.contrast = True
+            interface.sat_reclass = True
+            interface.iso_reclass = True
             interface.R_max = 50.0
             interface.h = 0.6774
             interface.omega_M = 0.3089
@@ -170,15 +170,15 @@ class Tests:
         runner = GroupFinderRunner()
 
         # Set up config once for all sim tests
-        interface_sim6D.R_h_group_val = 1.0
-        interface_sim6D.V_vir_group_val = 3.0
-        interface_sim6D.R_h_iso_val = 2.0
-        interface_sim6D.V_vir_iso_val = 3.0
-        interface_sim6D.contrast_val = False
+        interface_sim6D.R_h_group = 1.0
+        interface_sim6D.V_vir_group = 3.0
+        interface_sim6D.R_h_iso = 2.0
+        interface_sim6D.V_vir_iso = 3.0
+        interface_sim6D.contrast = False
         interface_sim6D.dim = 6
-        interface_sim6D.tree_search_val = True
-        interface_sim6D.sat_reclass_val = True
-        interface_sim6D.iso_reclass_val = True
+        interface_sim6D.tree_search = True
+        interface_sim6D.sat_reclass = True
+        interface_sim6D.iso_reclass = True
         interface_sim6D.B_scaling = 1.
         interface_sim6D.h = 0.6774
         interface_sim6D.omega_M = 0.3089
@@ -215,13 +215,13 @@ class Tests:
             runner = GroupFinderRunner()
 
             # Set up config
-            interface.R_h_group_val = 1.0
-            interface.V_vir_group_val = 3.0
-            interface.R_h_iso_val = 2.0
-            interface.V_vir_iso_val = 3.0
-            interface.contrast_val = True
-            interface.sat_reclass_val = True
-            interface.iso_reclass_val = True
+            interface.R_h_group = 1.0
+            interface.V_vir_group = 3.0
+            interface.R_h_iso = 2.0
+            interface.V_vir_iso = 3.0
+            interface.contrast = True
+            interface.sat_reclass = True
+            interface.iso_reclass = True
             interface.R_max = 350.0
             interface.h = 0.6774
             interface.omega_M = 0.3089
@@ -229,6 +229,7 @@ class Tests:
             interface.tree_search = True
             interface.chunk = True
             interface.chunk_size = 10
+            interface.use_nanoflann = True
 
             # Generate observational test data
             test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)

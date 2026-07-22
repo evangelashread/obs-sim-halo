@@ -1,6 +1,6 @@
-
 #include "GroupFinderCore.hh"
 #include "DataIO.hh"
+#include "Types.hh"
 #include <iostream>
 #include <random>
 #include <fstream>
@@ -48,7 +48,6 @@ int main(int argc, char* argv[]) {
 
     using namespace gf;
     using json = nlohmann::json;
-    using IDType = std::int64_t;
 
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
@@ -104,6 +103,7 @@ int main(int argc, char* argv[]) {
     bool chunk = config_json.value("chunk", false);
     size_t chunk_size = config_json.value("chunk_size", 1000000);
     double R_h_max_override = config_json.value("R_h_max_override", -1.0);
+    bool use_nanoflann = config_json.value("use_nanoflann", false);
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -122,6 +122,7 @@ int main(int argc, char* argv[]) {
         contrast_val,
         use_distance,
         R_h_max_override,
+        use_nanoflann,
     };
 
     // Run for each input file
@@ -142,7 +143,7 @@ int main(int argc, char* argv[]) {
 
         GroupsResult groups_result;
         std::vector<IDType> central_ids;
-        std::vector<double> halo_masses;
+        std::vector<FloatType> halo_masses;
         
         if (dim == 6) {
             GroupFinder<Dist3D, VelPeculiar3D> finder(sel, config, box_size, h_val*100., omega_M, periodic);
