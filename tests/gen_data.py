@@ -27,7 +27,7 @@ class GroupFinderTest:
         self.omega_M = omega_M
         self.G = 4.3009172706e-9 # Mpc (km/s)^2 Msun^{-1}
         self.mass = None
-        self.p_crit_0 = (3 * (h*100)**2) / (8 * np.pi * (4.3009172706e-9))
+        self.p_crit_0 = (3 * (h*100)**2) / (8 * np.pi * self.G)
         # Predefined parameters for satellite generation
         # In further versions, these should be made configurable
         self.R_h_group = 1.0
@@ -110,7 +110,7 @@ class GroupFinderTest:
         a = 1.0 / (1.0 + z)
         a1 = a - 1.0
         lna = np.log(a)
-        M1 = self.behroozi_params["M_0"] + self.behroozi_params["EPS_0"] + a1 * self.behroozi_params["EPS_A"] - lna * self.behroozi_params["EPS_LOGA"] + z * self.behroozi_params["EPS_Z"]
+        M1 = self.behroozi_params["M_0"] + a1 * self.behroozi_params["M_A"] - lna * self.behroozi_params["M_LOGA"] + z * self.behroozi_params["M_Z"]
         M_h = 10 ** (sol + M1)
         R_h = (3 * M_h / (4 * np.pi * 200 * self.p_crit(z))) ** (1/3)
         v_vir = np.sqrt(self.G * M_h / R_h)

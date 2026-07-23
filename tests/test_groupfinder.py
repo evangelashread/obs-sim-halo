@@ -39,6 +39,7 @@ class Tests:
         # Run halo concentration and z-distance data generation once, using same cosmology for all tests
         InterpolationData.generate_concentration_data(max_z=max_z)
         InterpolationData.generate_z_dist_data(max_z=max_z)
+        InterpolationData.generate_smhm_inverse_data(max_z=max_z)
     
     def test_sim_yang05(self, n_tests=NUM_TESTS):
         passed_sim = 0

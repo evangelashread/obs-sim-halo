@@ -70,4 +70,7 @@ InterpolationData.generate_concentration_data(max_z = 0.03)
 # Run redshift-distance data generation
 InterpolationData.generate_z_dist_data(max_z = 0.03)
 
+# Run stellar-mass-halo-mass relation data generation
+InterpolationData.generate_smhm_inverse_data(max_z = 0.03)
+
 run_groupfinder('obs', 'input/data/obs_data.h5', 'obs_gf_result.h5', 'input/obs_config.json')

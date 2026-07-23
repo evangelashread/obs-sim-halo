@@ -289,6 +289,47 @@ ConcentrationData HDF5Handler::readConcentrationData(const std::string& filename
     }
 }
 
+SMHMInverseData HDF5Handler::readSMHMInverseData(const std::string& filename) {
+    try {
+        H5::H5File file(filename, H5F_ACC_RDONLY);
+        SMHMInverseData data;
+        {
+            H5::DataSet dataset = file.openDataSet("log_mstar");
+            data.log_mstar = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+        }
+
+        {
+            H5::DataSet dataset = file.openDataSet("redshifts");
+            data.redshifts = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            data.log_Mh.resize(data.redshifts.size(), std::vector<double>(data.log_mstar.size()));
+        }
+
+        {
+            H5::Group group = file.openGroup("/log_Mh");
+            hsize_t n_objs = group.getNumObjs();
+            for (hsize_t i = 0; i < n_objs; ++i) {
+                std::string dataset_name = group.getObjnameByIdx(i);
+                H5G_obj_t type = group.getObjTypeByIdx(i);
+                if (type != H5G_DATASET) continue;
+                H5::DataSet dataset = group.openDataSet(dataset_name);
+                H5::Attribute attr = dataset.openAttribute("z");
+                double z_attr = 0.0;
+                attr.read(H5::PredType::NATIVE_DOUBLE, &z_attr);
+                if (std::abs(z_attr - data.redshifts[i]) > 1e-5) {
+                    throw std::runtime_error("Redshift attribute does not match expected value for dataset: " + dataset_name);
+                }
+                data.log_Mh[i] = readDataset1D<double>(dataset, H5::PredType::NATIVE_DOUBLE);
+            }
+        }
+        file.close();
+        std::cout << "SMHM inverse relation data loaded successfully from: " << filename << std::endl;
+        return data;
+
+    } catch (const H5::Exception& e) {
+        throw std::runtime_error("HDF5 error reading SMHM inverse relation data: " + std::string(e.getCDetailMsg()));
+    }
+}
+
 RedshiftDistanceData HDF5Handler::readRedshiftDistanceData(const std::string& filename) {
     try {
         H5::H5File file(filename, H5F_ACC_RDONLY);

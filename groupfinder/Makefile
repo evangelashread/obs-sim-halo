@@ -1,8 +1,8 @@
 CXX := g++
-# Edit the first two -I flags to point to the Aboria (/path/to/Aboria/src) and include directories (/path/to/include/directory) on your system
-# Usually the include path is your home directory (~) or /usr/local/include
-# May also need paths for OpenMP and HDF5
-CXXFLAGS := -I/path/to/Aboria/src -I/path/to/include -I/path/to/libomp/include -I/path/to/hdf5/include -O2 -std=c++17 -Wall -Wextra -march=armv8.5-a -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
+# Edit the first two -I flags to point to the Aboria (/path/to/Aboria/src) and include directories (/path/to/include) on your system
+# Usually the include path is in your home directory (~) or /usr/local/include
+# May also need include paths for OpenMP and HDF5
+CXXFLAGS := -I/path/to/Aboria/src -I/path/to/include -I/path/to/libomp/include -I/path/to/hdf5/include -O3 -std=c++17 -Wall -Wextra -march=armv8.5-a -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
 
 # You'll possibly have to edit these two flags too; currently configured for macOS
 HDF5_CXXFLAGS = -I/opt/homebrew/opt/hdf5/include

@@ -10,11 +10,9 @@ ObsSimHalo offers two main approaches for identifying galaxy groups:
 
 2. An adaptation of the popular [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) algorithm that classifies galaxies using their number density contrast in redshift/velocity space. This method is better suited for like-for-like comparisons of observational and simulation data.
 
-This algorithm has been tested with [TNG50 data](https://www.tng-project.org/data/) and observational data sourced from the 50 Mpc Galaxy Catalog ([Ohlson et al. 2024](https://github.com/davidohlson/50MGC)) and the [DESI Extragalactic Dwarf Galaxy Catalog](https://data.desi.lbl.gov/doc/releases/dr1/vac/extragalactic-dwarfs/).
+This algorithm has been tested with [TNG data](https://www.tng-project.org/data/) and observational data sourced from the 50 Mpc Galaxy Catalog ([Ohlson et al. 2024](https://github.com/davidohlson/50MGC)) and the [DESI Extragalactic Dwarf Galaxy Catalog](https://data.desi.lbl.gov/doc/releases/dr1/vac/extragalactic-dwarfs/). It has also been successfully tested at O(10^9)!
 
-In the adaptation of the Yang et al. (2005) algorithm (density-contrast-based classification), the estimated worst-case time complexity is O(N^2) when a brute force search is used. For N=10^6, this particular algorithm runs in ~30 min on an Intel i7 13th gen core (Ubuntu) if the cutoff radius for the brute search exceeds the radius of the sample volume. The 6D classification is accelerated with the use of k-d trees, achieving approximately O(N log N) complexity. For N=10^6, the 6D algorithm runs in ~5 min.
-
-While initially designed for classification at z ~ 0, this can also handle survey or simulation data out to any redshift. Flat lambdaCDM is assumed.
+This can handle survey or simulation data out to any redshift. Flat lambdaCDM is assumed.
 
 ### Observationally Consistent Classification
 
@@ -63,8 +61,8 @@ Required packages:
 2. **Configure C++ compilation**:
    This doesn't have a CMakeLists file at the moment, so after installing the C++ dependencies listed above, edit the Makefile in the `groupfinder/` directory to set paths for:
    - Aboria headers (`-I/path/to/Aboria/src`)
-   - Include path (`-I/path/to/include/directory`)
-   - HDF5 installation (if not in standard locations)
+   - Include path (`-I/path/to/include`)
+   - HDF5 and OpenMP include paths (if not in standard locations)
 
 3. **Build the C++ executables**:
    ```bash
@@ -107,10 +105,11 @@ obs_data = ObservationalData(
 )
 obs_data.write_to_hdf5('input/data/input_file.h5')
 
-# Generate halo-mass-concentration data and redshift-distance data for group finder
+# Generate halo-mass-concentration data, redshift-distance, and SMHM data for group finder
 # Note that you might have to adjust the cosmology manually in InterpolationData (this should be made configurable in a later update)
 InterpolationData.generate_concentration_data()
 InterpolationData.generate_z_dist_data()
+InterpolationData.generate_smhm_inverse_data()
 
 # Run group finder
 run_groupfinder('obs', 'input/data/input_file.h5', 'output_file.h5', 'input/obs_config.json')
@@ -156,6 +155,7 @@ run_groupfinder('sim', input_file(s), output_file(s), 'input/sim_config.json')
 - `box_size`: Length of 3D simulation box. Not needed for observation config
 - `R_max`: Maximum search radius for brute force nearest neighbors search
 - `use_distance`: Relevant for observational mode. Whether to use comoving distance + peculiar velocity OR redshift only.
+- `use_nanoflann`: Build a tree using nanoflann instead of Aboria. This is much more memory efficient for data volumes of order >10^8. The number of threads used for parallel nanoflann tree construction can be set with `n_threads`.
 
 ## Output
 

@@ -6,6 +6,8 @@
     "V_vir_iso": 3.0,
     "vel_cut": true,
     "tree_search": false,
+    "leaf_size": 16,
+    "n_threads": 8,
     "sat_reclass": true,
     "iso_reclass": true,
     "contrast": true,

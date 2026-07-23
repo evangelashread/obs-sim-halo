@@ -156,6 +156,8 @@ class GroupFinderInterface:
         self.V_vir_iso = 3.0
         self.vel_cut = True # classify based on peculiar velocity (not applicable for density-contrast-based classification)
         self.tree_search = False
+        self.leaf_size = 16
+        self.n_threads = 8
         self.sat_reclass = True
         self.iso_reclass = True
         self.contrast = True
@@ -182,6 +184,8 @@ class GroupFinderInterface:
                 "V_vir_iso": self.V_vir_iso,
                 "vel_cut": self.vel_cut if self.use_distance and not self.contrast else True,
                 "tree_search": self.tree_search,
+                "leaf_size": self.leaf_size,
+                "n_threads": self.n_threads,
                 "sat_reclass": self.sat_reclass,
                 "iso_reclass": self.iso_reclass,
                 "contrast": self.contrast,

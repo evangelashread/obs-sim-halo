@@ -27,7 +27,7 @@ class AboriaBackend : public NeighborSearchBackend {
 public:
     AboriaBackend(const std::vector<Vec3>& positions,
                   const std::vector<IDType>& local_indices,
-                  double lower_bound, double box_size, bool periodic)
+                  double lower_bound, double box_size, bool periodic, int leaf_size)
         : particles(positions.size())
     {
         using position = Particles_t::position;
@@ -38,7 +38,7 @@ public:
         Aboria::vdouble3 min = Aboria::vdouble3::Constant(lower_bound);
         Aboria::vdouble3 max = Aboria::vdouble3::Constant(box_size);
         Aboria::vbool3 pbc = Aboria::vbool3::Constant(periodic);
-        particles.init_neighbour_search(min, max, pbc);
+        particles.init_neighbour_search(min, max, pbc, leaf_size);
     }
 
     std::vector<IDType> kdtree_search(size_t central_loc_id,
@@ -75,9 +75,10 @@ class NanoflannBackend : public NeighborSearchBackend {
     std::vector<IDType> local_ids;
 public:
     NanoflannBackend(const std::vector<Vec3>& positions,
-                      const std::vector<IDType>& local_indices)
+                      const std::vector<IDType>& local_indices, 
+                      int leaf_size, int n_threads)
         : cloud(positions),
-          index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams(16)),
+          index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, n_threads)),
           local_ids(local_indices)
     {
         index.buildIndex();
@@ -108,7 +109,7 @@ public:
     AboriaNeighborBuilder(const std::vector<Vec3>& positions,
                            const std::vector<IDType>& local_indices,
                            double lower_bound, double box_size, bool periodic,
-                           bool use_nanoflann = false) {
+                           int leaf_size, int n_threads, bool use_nanoflann) {
         if (use_nanoflann && periodic) {
             throw std::runtime_error(
                 "use_nanoflann=true is incompatible with periodic=true: nanoflann "
@@ -116,9 +117,9 @@ public:
                 "for periodic runs, or handle periodicity beforehand with ghost particles.");
         }
         if (use_nanoflann) {
-            backend = std::make_unique<NanoflannBackend>(positions, local_indices);
+            backend = std::make_unique<NanoflannBackend>(positions, local_indices, leaf_size, n_threads);
         } else {
-            backend = std::make_unique<AboriaBackend>(positions, local_indices, lower_bound, box_size, periodic);
+            backend = std::make_unique<AboriaBackend>(positions, local_indices, lower_bound, box_size, periodic, leaf_size);
         }
     }
 

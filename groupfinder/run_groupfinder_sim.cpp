@@ -65,6 +65,14 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    dataio::SMHMInverseData smhm_data;
+    try {
+        smhm_data = dataio::HDF5Handler::readSMHMInverseData("input/smhm_inverse.h5");
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading SMHM data: " << e.what() << "\n";
+        return 1;
+    }
+
     dataio::RedshiftDistanceData z_dist_data;
     try {
         z_dist_data = dataio::HDF5Handler::readRedshiftDistanceData("input/redshift_distance.h5");
@@ -104,6 +112,8 @@ int main(int argc, char* argv[]) {
     size_t chunk_size = config_json.value("chunk_size", 1000000);
     double R_h_max_override = config_json.value("R_h_max_override", -1.0);
     bool use_nanoflann = config_json.value("use_nanoflann", false);
+    int leaf_size = config_json.value("leaf_size", 16);
+    int n_threads = config_json.value("n_threads", 8);
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -123,6 +133,9 @@ int main(int argc, char* argv[]) {
         use_distance,
         R_h_max_override,
         use_nanoflann,
+        leaf_size,
+        static_cast<IDType>(chunk_size),
+        n_threads,
     };
 
     // Run for each input file
@@ -148,8 +161,9 @@ int main(int argc, char* argv[]) {
         if (dim == 6) {
             GroupFinder<Dist3D, VelPeculiar3D> finder(sel, config, box_size, h_val*100., omega_M, periodic);
 
-            finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+            finder.set_conc_table(conc_data.halo_masses, conc_data.redshifts, conc_data.concentration);
             finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
+            finder.set_smhm_table(smhm_data.log_mstar, smhm_data.redshifts, smhm_data.log_Mh);
 
             auto result = finder.run_once(galaxy_data.masses, galaxy_data.ids, galaxy_data.positions, 
                     galaxy_data.velocities, galaxy_data.ref_positions, galaxy_data.ref_velocities, 
@@ -162,8 +176,9 @@ int main(int argc, char* argv[]) {
         } else if (dim == 3) {
             GroupFinder<DistProjectedRCTan, VelTotal> finder(sel, config, box_size, h_val*100., omega_M, periodic);
 
-            finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+            finder.set_conc_table(conc_data.halo_masses, conc_data.redshifts, conc_data.concentration);
             finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
+            finder.set_smhm_table(smhm_data.log_mstar, smhm_data.redshifts, smhm_data.log_Mh);
 
             auto result = finder.run_once(galaxy_data.masses, galaxy_data.ids, galaxy_data.positions, 
                     galaxy_data.velocities, galaxy_data.ref_positions, galaxy_data.ref_velocities, 

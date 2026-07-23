@@ -15,7 +15,7 @@ namespace dataio {
 
 /**
  * @brief Input observational data
- * Positions are assumed to be in spherical coords (radial distance, RA, Dec)
+ * Positions are assumed to be in spherical coords (radial distance or z, RA, Dec)
  */
 struct ObsInputData {
     std::vector<FloatType> masses;
@@ -46,6 +46,12 @@ struct ConcentrationData {
     std::vector<std::vector<double>> concentration;
 };
 
+struct SMHMInverseData {
+    std::vector<double> log_mstar;
+    std::vector<double> redshifts;
+    std::vector<std::vector<double>> log_Mh;
+};
+
 struct RedshiftDistanceData {
     std::vector<double> redshifts;
     std::vector<double> distances;
@@ -59,7 +65,7 @@ struct GroupFinderResults {
 };
 
 /**
- * @brief Structure to hold configuration parameters
+ * @brief Configuration parameters
  * These are just copied from the JSON config file but stored here for redundancy.
  */
 struct GroupFinderConfig {
@@ -96,19 +102,18 @@ struct GroupFinderStatistics {
 class HDF5Handler {
 public:
     /**
-     * @brief Read observational input data from HDF5 file
+     * @brief Read observational/simulation input data from HDF5 file
      * @param filename Path to HDF5 file
-     * @return ObsInputData structure
+     * @return ObsInputData/SimInputData structure
      */
     static ObsInputData readObsData(const std::string& filename);
-
-    /**
-     * @brief Read simulation input data from HDF5 file
-     */
     static SimInputData readSimData(const std::string& filename);
 
+    /**
+     * @brief Read input interpolation data from their HDF5 files
+     */
     static ConcentrationData readConcentrationData(const std::string& filename);
-
+    static SMHMInverseData readSMHMInverseData(const std::string& filename);
     static RedshiftDistanceData readRedshiftDistanceData(const std::string& filename);
 
     /**

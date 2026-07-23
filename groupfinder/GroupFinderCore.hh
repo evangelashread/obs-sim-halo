@@ -60,12 +60,6 @@ inline constexpr double GF_BOX_SIZE = 35000./GF_h/1000.; // Mpc, can be defined 
 inline constexpr double GF_C = 299792.458; // km/s
 inline constexpr double GF_OMEGA_M = 0.3089;
 
-HaloProps compute_halo_props(
-    double z, double logMstar, double p_crit_0, 
-    const BehrooziParams& params = BehrooziParams(), 
-    double omega_m = GF_OMEGA_M
-);
-
 /* ################# Define distance methods ################ */
 struct DistPerp2D {
     double operator()(const Vec3& r_cen_mw, const Vec3& r_sat_mw, double L = GF_BOX_SIZE) const;
@@ -116,6 +110,9 @@ struct GroupFinderSettings {
                         // This is generally always true for simulation data, since redshifts can be computed from distances and velocities in this code
     double R_h_max_override;
     bool use_nanoflann;
+    int leaf_size;
+    IDType chunk_readout;
+    int n_threads;
 };
 
 class AboriaNeighborBuilder; // Forward declare the kd tree builder class
@@ -129,7 +126,7 @@ public:
 
     ~GroupFinder();
 
-    void set_conc_table(std::vector<double> M_arr, std::vector<std::vector<double>> c_array, std::vector<double> redshift);
+    void set_conc_table(std::vector<double> logMstar_arr, std::vector<double> redshift, std::vector<std::vector<double>> logc_array);
     
     double c_from_M(double M, double z) const;
 
@@ -138,6 +135,11 @@ public:
     double z_from_D(double d) const;
 
     double D_from_z(double z) const;
+
+    void set_smhm_table(std::vector<double> logMstar_arr, std::vector<double> z_arr,
+                     std::vector<std::vector<double>> logMh_array);
+
+    double Mh_from_Mstar(double logMstar, double z) const;
 
     std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
     run_once(
@@ -208,12 +210,22 @@ private:
 
     std::array<double,2> density_contrast(IDType local_c_id, double trans_dist, double rel_vel);
 
-    std::vector<double> tab_logM_c_; // log mass
-    std::vector<std::vector<double>> tab_logc_;  // log concentration
-    std::vector<double> tab_z_c_; // redshifts
+    HaloProps compute_halo_props(
+        double z, double logMstar, double p_crit_0, 
+        const BehrooziParams& params = BehrooziParams(), 
+        double omega_m = GF_OMEGA_M
+    );
+
+    std::vector<double> tab_logM_conc_; // log mass
+    std::vector<double> tab_z_conc_; // redshifts
+    std::vector<std::vector<double>> tab_logc_conc_;  // log concentration from z (rows) and Mstar (col)
 
     std::vector<double> tab_z_D_; // redshifts
     std::vector<double> tab_D_; // comoving distances
+
+    std::vector<double> tab_z_smhm_;
+    std::vector<double> tab_logMstar_smhm_;
+    std::vector<std::vector<double>> tab_logMh_smhm_; // halo mass from z (rows) and Mstar (col)
 };
 }
 

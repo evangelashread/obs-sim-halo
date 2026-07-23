@@ -16,11 +16,9 @@
 #include <cstdlib>
 #include <math.h>
 #include <string>
-#include <malloc.h>
+//#include <malloc.h>
 
 namespace gf {
-
-IDType chunk_readout = IDType(1000000);
 
 static inline double wrap(double x, double L) {
     /** 
@@ -152,9 +150,14 @@ static double find_Mh(const double& z, double x0, double x1, double current_mass
                       const BehrooziParams& params, double tolerance = 1e-9, int max_iter = 100) {
     /**
      * @brief Secant root-finding method for inverting Behroozi SMHM relation
+     * Returns 
      */
     double f_x0 = behroozi_SMHM(z, x0, current_mass, params);
     double f_x1 = behroozi_SMHM(z, x1, current_mass, params);
+
+    if (!std::isfinite(f_x0) || !std::isfinite(f_x1)) {
+        return x1; // not finite before iteration even began
+    }
 
     for (int i = 0; i < max_iter; ++i) {
         if (std::fabs(f_x1) < tolerance) {
@@ -179,6 +182,10 @@ static double find_Mh(const double& z, double x0, double x1, double current_mass
         f_x0 = f_x1;
         x1 = x2;
         f_x1 = behroozi_SMHM(z, x1, current_mass, params);
+
+        if (!std::isfinite(x1) || !std::isfinite(f_x1)) {
+            return x1; // became non finite in the middle of the iteration
+        }
     }
 
     std::cout << "Max iterations reached without convergence. Last approximation: " << x1 << std::endl;
@@ -197,14 +204,16 @@ static inline double VelocityLOS(const Vec3& pos, const Vec3& vel) {
     return v_LOS;
 }
 
-HaloProps compute_halo_props(double z, double logMstar, double p_crit_0, const BehrooziParams& params, double omega_m) {
+template<class D,class V>
+HaloProps GroupFinder<D,V>::compute_halo_props(double z, double logMstar, double p_crit_0, const BehrooziParams& params, double omega_m) {
     /** @brief Precompute halo properties once per iteration of group_finding */
     double a = 1.0 / (1.0 + z);
     double a1 = a - 1.0;
     double lna = std::log(a);
-    double sol = find_Mh(z, -5., 5., logMstar, params);
-    double M_1 = params.M_0 + a1 * params.M_A - lna * params.M_LOGA + z * params.M_Z; // log10(M1/Msun)
-    double M_h = std::pow(10., sol + M_1); // Msun
+    //double sol = find_Mh(z, -5., 5., logMstar, params);
+    //double M_1 = params.M_0 + a1 * params.M_A - lna * params.M_LOGA + z * params.M_Z; // log10(M1/Msun)
+    //double M_h = std::pow(10., sol + M_1); // Msun
+    double M_h = std::pow(10., Mh_from_Mstar(logMstar, z));
     double p_crit = critical_density(z, p_crit_0, omega_m);
     double R_h = std::cbrt((3.*M_h)/(4.*M_PI*200.*p_crit)); // Mpc
     double V_vir = std::sqrt(gf::GF_G * M_h / R_h); // km/s
@@ -356,23 +365,24 @@ double VelPeculiar2D::operator()(const Vec3& mw_c, const Vec3& mw_s,
 
 template<class D,class V>
 double GroupFinder<D,V>::c_from_M(double logM, double z) const {
-    if (tab_logM_c_.size() < 2) return std::numeric_limits<double>::quiet_NaN();
-    if (tab_z_c_.size() == 1) {
-        double logc = interp_lin(logM, tab_logM_c_, tab_logc_[0]); // x in log10(M), y in log10(c)
+    if (tab_logM_conc_.size() < 2) return std::numeric_limits<double>::quiet_NaN();
+    if (tab_z_conc_.size() == 1) {
+        double logc = interp_lin(logM, tab_logM_conc_, tab_logc_conc_[0]); // x in log10(M), y in log10(c)
         return std::pow(10.0, logc);
     } else {
         // bilinear interpolation in logM and z to get logc
-        double logc = bilinear_interp(z, logM, tab_z_c_, tab_logM_c_, tab_logc_);
+        double logc = bilinear_interp(z, logM, tab_z_conc_, tab_logM_conc_, tab_logc_conc_);
         return std::pow(10.0, logc);
     }
 }
 
 template<class D,class V>
-void GroupFinder<D,V>::set_conc_table(std::vector<double> M_arr, std::vector<std::vector<double>> c_array, std::vector<double> redshift) {
-    const size_t N_M = M_arr.size();
+void GroupFinder<D,V>::set_conc_table(std::vector<double> logMstar_arr, std::vector<double> redshift,
+                                      std::vector<std::vector<double>> logc_array) {
+    const size_t N_M = logMstar_arr.size();
     const size_t N_z = redshift.size();
 
-    if (c_array.size() != N_z) {
+    if (logc_array.size() != N_z) {
         std::cerr << "Error: the number of vectors in the concentration table must equal the number of redshift bins." << std::endl;
         std::abort();
     }
@@ -381,23 +391,40 @@ void GroupFinder<D,V>::set_conc_table(std::vector<double> M_arr, std::vector<std
         std::abort();
     }
     // Copy and build logs (assumes monotonic/unique already)
-    tab_logM_c_.resize(N_M);
-    tab_z_c_.resize(N_z);
-    tab_logc_.resize(N_z);
-    for (size_t i = 0; i < N_z; ++i) {
-        tab_logc_[i].resize(N_M);
-        std::vector<double> vec_z = c_array[i];
-        if (vec_z.size() != N_M) {
-            std::cerr << "Error: the number of concentration elements per redshift bin must equal the number of mass bins." << std::endl;
-            std::abort();
-        }
-        for (size_t j = 0; j < N_M; ++ j) {
-            vec_z[j] = std::log10(vec_z[j]);
-        }
-        tab_logc_[i] = vec_z;
+    tab_logM_conc_ = std::move(logMstar_arr);
+    tab_z_conc_ = std::move(redshift);
+    tab_logc_conc_ = std::move(logc_array);
+}
+
+template<class D,class V>
+double GroupFinder<D,V>::Mh_from_Mstar(double logMstar, double z) const {
+    if (tab_logMstar_smhm_.size() < 2) return std::numeric_limits<double>::quiet_NaN();
+    if (tab_z_smhm_.size() == 1) {
+        double logMh = interp_lin(logMstar, tab_logMstar_smhm_, tab_logMh_smhm_[0]); // x in log10(M), y in log10(Mh)
+        return logMh;
+    } else {
+        // bilinear interpolation in logM and z to get logc
+        double logMh = bilinear_interp(z, logMstar, tab_z_smhm_, tab_logMstar_smhm_, tab_logMh_smhm_);
+        return logMh;
     }
-    tab_logM_c_ = M_arr;
-    tab_z_c_ = redshift;
+}
+
+template<class D,class V>
+void GroupFinder<D,V>::set_smhm_table(std::vector<double> logMstar_arr, std::vector<double> z_arr,
+                                      std::vector<std::vector<double>> logMh_array) {
+    const size_t N_M = logMstar_arr.size();
+    const size_t N_z = z_arr.size();
+    if (logMh_array.size() != N_z) {
+        std::cerr << "Error: the number of vectors in the inverse SMHM table must equal the number of redshift bins." << std::endl;
+        std::abort();
+    }
+    if (N_M < 2) {
+        std::cerr << "Error: the inverse SMHM lookup table must have at least two entries" << std::endl;
+        std::abort();
+    }
+    tab_z_smhm_ = std::move(z_arr);
+    tab_logMstar_smhm_ = std::move(logMstar_arr);
+    tab_logMh_smhm_ = std::move(logMh_array);
 }
 
 template<class D,class V>
@@ -567,13 +594,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             std::abort();
         }
     }
-    if (config.tree_search) {
-        double L_min;
-        if (config.obs) { L_min = -L; } else { L_min = 0.0; }
-        tree.reset();
-        tree = std::make_unique<AboriaNeighborBuilder>(central_positions, central_indices, L_min, L, periodic, config.use_nanoflann);
-        std::cout << "Done building kd tree for satellite reclassification." << std::endl;
-    }
+
     int reclassified = 0;
     IDType classified = IDType(0);
     size_t N = satellite_indices.size();
@@ -592,13 +613,13 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
         IDType local_s_id = satellite_indices[s]; // index into positions_sorted
         if (config.tree_search) { // Returns local indices
             if (!config.obs) {
-                cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, 1.05 * R_h_max); // returns value from central_indices
+                cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, 1.5 * sel.R_h_group * R_h_max); // returns value from central_indices
             } else {
                 // since we are searching in RA/Dec space, just use the distance of the maximum virial radius
                 cand = tree->kdtree_search((size_t)local_s_id, cartesian_from_RA_Dec, 1.5 * sel.R_h_group * R_h_max * (Rmax / positions_sorted[local_s_id][0]));
             }
         } else { // Returns local indices
-            if (Rmax >= GF_BOX_SIZE * std::sqrt(3) / 2.0) {
+            if (Rmax >= L * std::sqrt(3) / 2.0) {
                 cand = central_indices; // All centrals are candidates
             } else {
                 cand = bruteforce_search((size_t)local_s_id, positions_sorted, central_indices, Rmax, L, periodic, config.obs); // returns value from central_indices
@@ -613,6 +634,9 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
         new_cands.clear();
         for (size_t k = 0; k < cand.size(); ++k) {
             size_t local_c_id = cand[k]; // index into positions_sorted
+            // Using one tree for everything means our search returns ALL nearby galaxies, not just centrals 
+            if (classification[local_c_id] != 0 && classification[local_c_id] != 1) continue;
+
             auto tr = transform((size_t)local_c_id, (std::vector<IDType>){local_s_id});
             double rel_dist = tr.rel_dists[0];
             double rel_vel = tr.rel_vels[0];
@@ -621,10 +645,11 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             double ratio = (rel_dist / (sel.R_h_group * R_h_cand))*(rel_dist / (sel.R_h_group * R_h_cand)) 
                             + (rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)))*(rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)));
             double mass_cand = masses_sorted[local_c_id];
-            std::array<double,2> dens = density_contrast(local_c_id, rel_dist, rel_vel);
-            double P_M = dens[0];
-            double B = dens[1]*scale;
+            
             if (config.contrast) {
+                std::array<double,2> dens = density_contrast(local_c_id, rel_dist, rel_vel);
+                double P_M = dens[0];
+                double B = dens[1]*scale;
                 //B_values[(size_t)central_map[local_c_id]] = B;
                 if (P_M > B && masses_sorted[(size_t)local_s_id] < mass_cand) {
                     new_cands.push_back(cand[k]);
@@ -702,7 +727,7 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
             }
         }
         cand.clear();
-        if (classified % chunk_readout == IDType(0)) { 
+        if (classified % config.chunk_readout == IDType(0)) { 
             double percent_classified = 100.0 * (static_cast<double>(classified) / static_cast<double>(N)); 
             std::cout << "\r" << percent_classified << " percent of galaxies have been initially classified. " << std::flush; 
         }
@@ -756,13 +781,6 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             isolated_central_indices.push_back(i);
         }
     }
-    if (config.tree_search) {
-        double L_min;
-        if (config.obs) { L_min = -L; } else { L_min = 0.0; }
-        tree.reset();
-        tree = std::make_unique<AboriaNeighborBuilder>(group_central_positions, group_central_indices, L_min, L, periodic, config.use_nanoflann);
-        std::cout << "Done building kd tree for isolated central classification." << std::endl;
-    }
 
     size_t N = isolated_central_indices.size();
     int reclassified = 0;
@@ -775,12 +793,19 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
         IDType local_i_id = isolated_central_indices[i];
         if (config.tree_search) {
             if (!config.obs) {
-                cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, 1.05 * R_h_max); // value from group_central_indices
+                cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, 1.5 * sel.R_h_iso * R_h_max); // value from group_central_indices
             } else {
                 cand = tree->kdtree_search((size_t)local_i_id, cartesian_from_RA_Dec, 1.5 * sel.R_h_iso * R_h_max * (Rmax / positions_sorted[local_i_id][0])); 
             }
+            // Filter down to group centrals when using one tree for everything
+            std::vector<IDType> filtered;
+            filtered.reserve(cand.size());
+            for (IDType id : cand) {
+                if (classification[(size_t)id] == 0) filtered.push_back(id);
+            }
+            cand = std::move(filtered);
         } else {
-            if (Rmax >= GF_BOX_SIZE * std::sqrt(3) / 2.0) {
+            if (Rmax >= L * std::sqrt(3) / 2.0) {
                 cand = group_central_indices; // All group centrals are candidates
             } else {
                 cand = bruteforce_search((size_t)local_i_id, positions_sorted, group_central_indices, Rmax, L, periodic, config.obs); // value from group_central_indices
@@ -790,9 +815,11 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             std::cout << "Warning: No candidate group centrals found for isolated central index " << local_i_id << std::endl;
             continue;
         }
+        if (config.contrast) {
+            P_M_cands.resize(cand.size());
+            B_cands.resize(cand.size());
+        }
         ratios.resize(cand.size());
-        P_M_cands.resize(cand.size());
-        B_cands.resize(cand.size());
         relative_velocities.resize(cand.size());
         relative_distances.resize(cand.size());
         halo_radii.resize(cand.size());
@@ -806,9 +833,11 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             halo_velocities[k] = halo_props[local_gc_id].V_vir;
             ratios[k] = (tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h))*(tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h)) 
                         + (tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)))*(tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)));
-            std::array<double,2> dens = density_contrast(local_gc_id, relative_distances[k], tr.rel_vels[0]);
-            P_M_cands[k] = dens[0];
-            B_cands[k] = dens[1]*scale;
+            if (config.contrast) {
+                std::array<double,2> dens = density_contrast(local_gc_id, relative_distances[k], tr.rel_vels[0]);
+                P_M_cands[k] = dens[0];
+                B_cands[k] = dens[1]*scale;
+            }
         }
         // To remain an isolated central, it must be more than twice the virial radius away from any group central
         bool isolated = true;
@@ -925,9 +954,9 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
             }
         }
         cand.clear();
-        if (classified % chunk_readout == IDType(0)) { 
+        if (classified % config.chunk_readout == IDType(0)) { 
             double percent_classified = 100.0 * (static_cast<double>(classified) / static_cast<double>(N)); 
-            std::cout << "\r" << percent_classified << " percent of galaxies have been initially classified. " << std::flush; 
+            std::cout << "\r" << percent_classified << " percent of isolated centrals have been reviewed for reclassification. " << std::flush; 
         }
     }
     std::cout << " " << std::endl;
@@ -963,7 +992,9 @@ void GroupFinder<D,V>::initialize(const std::vector<FloatType>& masses_unsorted,
     halo_props.resize(N);
     local_ids.resize(N);
 
+    IDType initialized = IDType(0);
     for(size_t i = 0; i < N; ++i) {
+        initialized += 1;
         local_ids[i] = (IDType)i;
         positions_sorted[i]  = positions_box[mass_order[i]];
         velocities_sorted[i] = velocities_pec[mass_order[i]];
@@ -975,6 +1006,9 @@ void GroupFinder<D,V>::initialize(const std::vector<FloatType>& masses_unsorted,
         Vec3 v = {velocities_sorted[i][0]-MW_vel_pec[0],
                   velocities_sorted[i][1]-MW_vel_pec[1],
                   velocities_sorted[i][2]-MW_vel_pec[2]};
+        if (periodic) {
+            d[0] = wrap(d[0],L); d[1] = wrap(d[1],L); d[2] = wrap(d[2],L);
+        }
         double d2 = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
         double dist = 0., cosmo_redshift = 0.;
         if (d2 > 0.) { 
@@ -990,9 +1024,6 @@ void GroupFinder<D,V>::initialize(const std::vector<FloatType>& masses_unsorted,
             total_redshifts[i] = cosmo_redshift;
         }
 
-        if (periodic) {
-            d[0] = wrap(d[0],L); d[1] = wrap(d[1],L); d[2] = wrap(d[2],L);
-        }
         MWcoords[i] = d;
         velocities_sorted[i] = v;
         halo_props[i] = compute_halo_props(total_redshifts[i],
@@ -1001,6 +1032,10 @@ void GroupFinder<D,V>::initialize(const std::vector<FloatType>& masses_unsorted,
                                             gf::BehrooziParams(),
                                             OMEGA_M);
         groupcat_ids_sorted[i] = groupcat_ids[mass_order[i]];
+        if (initialized % config.chunk_readout == IDType(0)) { 
+            double percent_initialized = 100.0 * (static_cast<double>(initialized) / static_cast<double>(N)); 
+            std::cout << "\r" << percent_initialized << " percent of galaxies have been prepared for group classification." << std::flush; 
+        }
     }
     std::cout << "Done calculating halo properties and initializing sorted arrays." << std::endl;
     
@@ -1043,7 +1078,9 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<FloatType>& masses_unsor
 
     if (config.use_distance) { velocities_sorted_obs.resize(N); }
 
+    IDType initialized = IDType(0);
     for(size_t i = 0; i < N; ++i) {
+        initialized += IDType(1);
         local_ids[i] = (IDType)i;
         masses_sorted[i] = masses_unsorted[mass_order[i]];
         if (config.use_distance) { // need to calculate cosmological redshifts from comoving distance (peculiar velocity is separated)
@@ -1062,6 +1099,10 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<FloatType>& masses_unsor
                                             gf::BehrooziParams(),
                                             OMEGA_M);
         groupcat_ids_sorted[i] = groupcat_ids[mass_order[i]];
+        if (initialized % config.chunk_readout == IDType(0)) { 
+            double percent_initialized = 100.0 * (static_cast<double>(initialized) / static_cast<double>(N)); 
+            std::cout << "\r" << percent_initialized << " percent of galaxies have been prepared for group classification." << std::flush; 
+        }
     }
     std::cout << "Done calculating halo properties and initializing sorted arrays." << std::endl;
 
@@ -1092,14 +1133,14 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
     if (config.tree_search) {
         tree.reset();
         if (!config.obs) {
-            tree = std::make_unique<AboriaNeighborBuilder>(positions_sorted, local_ids, 0.0, L, periodic, config.use_nanoflann);
+            tree = std::make_unique<AboriaNeighborBuilder>(positions_sorted, local_ids, 0.0, L, periodic, config.leaf_size, config.n_threads, config.use_nanoflann);
         } else {
             // Convert dec (1st index) and RA (2nd index) to cartesian coords and build tree from it
             for (size_t v = 0; v < N; ++v) {
                 Vec3 vec = {1., positions_sorted[v][1], positions_sorted[v][2]};
                 cartesian_from_RA_Dec[v] = celestial_to_cartesian(vec, Rmax);
             }
-            tree = std::make_unique<AboriaNeighborBuilder>(cartesian_from_RA_Dec, local_ids, -L, L, periodic, config.use_nanoflann);
+            tree = std::make_unique<AboriaNeighborBuilder>(cartesian_from_RA_Dec, local_ids, -L, L, periodic, config.leaf_size, config.n_threads, config.use_nanoflann);
         }
         std::cout << "Done building kd tree for initial classification." << std::endl;
     }
@@ -1119,7 +1160,7 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
                 cand = tree->kdtree_search(c, cartesian_from_RA_Dec, 1.5 * sel.R_h_group * halo_props[c].R_h * (Rmax / positions_sorted[c][0]));
             }
         } else {
-            if (Rmax >= GF_BOX_SIZE * std::sqrt(3) / 2.0) {
+            if (Rmax >= L * std::sqrt(3) / 2.0) {
                 cand = local_ids; // All galaxies are candidates
             } else {
                 cand = bruteforce_search(c, positions_sorted, local_ids, Rmax, L, periodic, config.obs);
@@ -1135,12 +1176,12 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
         for (size_t k = 0; k < cand.size(); ++k) {
             IDType local_id = cand[k];
             if (group_label[local_id] != IDType(-1)) continue; // Ignore if already classified
-            std::array<double,2> dens = density_contrast(c, tr.rel_dists[k], tr.rel_vels[k]);
-            double P_M = dens[0];
-            double B = dens[1]*scale;
             
             if (config.contrast) {
-                if (P_M > B && masses_sorted[local_id] <= masses_sorted[c]) {
+                std::array<double,2> dens = density_contrast(c, tr.rel_dists[k], tr.rel_vels[k]);
+                double P_M = dens[0];
+                double B = dens[1]*scale;
+                if (P_M > B && masses_sorted[local_id] < masses_sorted[c]) {
                     group_label[local_id] = (IDType)c;
                     if ((IDType)local_id != (IDType)c) { // Avoid classifying the central as its own satellite
                         classification[local_id] = 2; // 2 = satellite
@@ -1171,7 +1212,7 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
         group_label[c] = (IDType)c;
         if (sat_count == 0) classification[c] = 1; // 1 = isolated central
         else classification[c] = 0; // 0 = group central
-        if (classified % chunk_readout == IDType(0)) { 
+        if (classified % config.chunk_readout == IDType(0)) { 
             double percent_classified = 100.0 * (static_cast<double>(classified) / static_cast<double>(N)); 
             std::cout << "\r" << percent_classified << " percent of galaxies have been initially classified." << std::flush; 
         }
@@ -1282,7 +1323,7 @@ GroupFinder<D,V>::run_once(
     groupcat_ids.shrink_to_fit();
     positions_box.shrink_to_fit();
     velocities_pec.shrink_to_fit();
-    malloc_trim(0);
+    //malloc_trim(0);
     return classify(Rmax, scale, periodic);
 }
 
@@ -1307,7 +1348,7 @@ GroupFinder<D,V>::run_once_obs(
     groupcat_ids.shrink_to_fit();
     positions.shrink_to_fit();
     velocities_los.shrink_to_fit();
-    malloc_trim(0);
+    //malloc_trim(0);
     return classify(Rmax, scale, periodic);
 }
 };

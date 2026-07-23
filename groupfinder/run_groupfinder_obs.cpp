@@ -53,6 +53,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Load SMHM data
+    dataio::SMHMInverseData smhm_data;
+    try {
+        smhm_data = dataio::HDF5Handler::readSMHMInverseData("input/smhm_inverse.h5");
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading SMHM data: " << e.what() << "\n";
+        return 1;
+    }
+
     // Load redshift-distance data
     dataio::RedshiftDistanceData z_dist_data;
     try {
@@ -95,6 +104,8 @@ int main(int argc, char* argv[]) {
     size_t chunk_size = config_json.value("chunk_size", 1000000);
     double R_h_max_override = config_json.value("R_h_max_override", -1.0);
     bool use_nanoflann = config_json.value("use_nanoflann", false);
+    int leaf_size = config_json.value("leaf_size", 16);
+    int n_threads = config_json.value("n_threads", 8);
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -114,6 +125,9 @@ int main(int argc, char* argv[]) {
         use_distance,
         R_h_max_override,
         use_nanoflann,
+        leaf_size,
+        static_cast<IDType>(chunk_size),
+        n_threads,
     };
 
     GroupsResult groups_result;
@@ -123,8 +137,9 @@ int main(int argc, char* argv[]) {
     // Run group finder
     if (use_distance) {
         GroupFinder<DistObs, VelObs> finder(sel, config, box_size, h_val*100., omega_M, periodic);
-        finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+        finder.set_conc_table(conc_data.halo_masses, conc_data.redshifts, conc_data.concentration);
         finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
+        finder.set_smhm_table(smhm_data.log_mstar, smhm_data.redshifts, smhm_data.log_Mh);
 
         auto result = finder.run_once_obs(
             galaxy_data.masses, 
@@ -142,8 +157,9 @@ int main(int argc, char* argv[]) {
 
     } else { // the zeroth column in positions is assumed to be redshifts
         GroupFinder<DistObs, VelTotal> finder(sel, config, box_size, h_val*100., omega_M, periodic);
-        finder.set_conc_table(conc_data.halo_masses, conc_data.concentration, conc_data.redshifts);
+        finder.set_conc_table(conc_data.halo_masses, conc_data.redshifts, conc_data.concentration);
         finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
+        finder.set_smhm_table(smhm_data.log_mstar, smhm_data.redshifts, smhm_data.log_Mh);
 
         auto result = finder.run_once_obs(
             galaxy_data.masses, 
