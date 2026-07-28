@@ -26,10 +26,12 @@ inline std::vector<IDType> bruteforce_search(size_t central_id, const std::vecto
     double R2 = R_max*R_max;
     for (size_t j : cand_ids) {
         if (obs) {
-            // Spherical coordinates: d2 = |r-r'|^2 = (r^2 + r'^2 - 2 r r' (cos theta cos theta' + sin theta sin theta' cos(phi-phi')))
+            // theta (Dec) ranges from -pi/2 to pi/2
+            // phi (RA) ranges from 0 to 2pi
+            // Spherical coordinates: d2 = |r-r'|^2 = (r^2 + r'^2 - 2 r r' (sin theta sin theta' + cos theta cos theta' cos(phi-phi')))
             double d2 = all_positions[j][0]*all_positions[j][0] + pos0[0]*pos0[0] 
-            - 2.0*all_positions[j][0]*pos0[0]*(std::cos(all_positions[j][1])*std::cos(pos0[1]) 
-            + std::sin(all_positions[j][1])*std::sin(pos0[1])*std::cos(all_positions[j][2]-pos0[2]));
+            - 2.0*all_positions[j][0]*pos0[0]*(std::sin(all_positions[j][1])*std::sin(pos0[1]) 
+            + std::cos(all_positions[j][1])*std::cos(pos0[1])*std::cos(all_positions[j][2]-pos0[2]));
             // If the distance is within the cutoff radius, add to neighbors
             if (d2 <= R2) candidates.push_back((IDType)j);
         } else { // Cartesian coordinates (simulation data)

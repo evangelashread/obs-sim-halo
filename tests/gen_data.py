@@ -156,7 +156,7 @@ class GroupFinderTest:
         # Generate N total satellites
         cos_t = np.random.uniform(-1., 1., N)
         theta = np.arccos(cos_t)
-        phi = np.random.uniform(0., 2*np.pi, N)
+        phi = np.random.uniform(0., (2*np.pi)-1e-4, N)
         m = np.random.uniform(6.0, 8.5, N) # ensure satellite mass < central mass
         
         if N > 1:
@@ -234,7 +234,8 @@ class GroupFinderTest:
         # Place groups equidistantly on a circle
         for i in range(n_groups):
             phi = 2 * np.pi * i / n_groups
-            theta = np.random.uniform(0., 2*np.pi)
+            cos_t = np.random.uniform(-1., 1.)
+            theta = np.arccos(cos_t)
             pos[i, 0] = r_cen[i] * np.cos(phi) * np.sin(theta)
             pos[i, 1] = r_cen[i] * np.sin(phi) * np.sin(theta)
             pos[i, 2] = r_cen[i] * np.cos(theta) # z is free parameter
@@ -319,7 +320,9 @@ class GroupFinderTest:
         if redshift:
             all_sph = np.array(all_sph)
             dists = all_sph[:,0]
-            zs = z_at_value(cosmo.comoving_distance, dists*u.Mpc).value
+            z_cosmo = z_at_value(cosmo.comoving_distance, dists*u.Mpc).value
+            z_pec = np.array(all_vel) / 299792.458
+            zs = (1 + z_cosmo) * (1 + z_pec) - 1
             all_sph[:,0] = zs
             all_vel = [0.]
             all_sph = all_sph.tolist()
@@ -453,20 +456,23 @@ def check_results(input_file: str, result_file: str):
     for input_group, found_group in zip(input_group_indices, found_group_indices):
         input_set = set(sorted(input_group))
         found_set = set(sorted(found_group))
-        if input_set != found_set:
-            # The last element of each input group (highest ID) is the isolated satellite
-            # which should NOT be found by the group finder
-            if len(input_set) > 1:
-                input_isolated = max(input_set)
-                input_set.remove(input_isolated)
-                # Check if the remaining members match
-                if input_set != found_set:
-                    print(f"Group members do not match for group with central ID {input_group[0]}")
-                    print(f"  Expected (excluding isolated): {np.array(list(input_set), dtype=int)}")
-                    print(f"  Found: {np.array(list(sorted(found_set)), dtype=int)}")
-                    count_nonmatches += 1
-            else:
+        n_satellites = len(input_set) - 1
+        # The last element of each input group (highest ID) is the isolated satellite
+        # which should NOT be found by the group finder
+        if n_satellites > 1:
+            input_isolated = max(input_set)
+            input_set.remove(input_isolated)
+            # Check if the remaining members match
+            if input_set != found_set:
                 print(f"Group members do not match for group with central ID {input_group[0]}")
+                print(f"  Expected (excluding isolated): {np.array(list(sorted(input_set)), dtype=int)}")
+                print(f"  Found: {np.array(list(sorted(found_set)), dtype=int)}")
+                count_nonmatches += 1
+        else:
+            if input_set != found_set:
+                print(f"Group members do not match for group with central ID {input_group[0]}")
+                print(f"  Expected: {np.array(list(sorted(input_set)), dtype=int)}")
+                print(f"  Found: {np.array(list(sorted(found_set)), dtype=int)}")
                 count_nonmatches += 1
     print("Results checked.")
     if count_nonmatches == 0:

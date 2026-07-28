@@ -1,12 +1,18 @@
 CXX := g++
-# Edit the first two -I flags to point to the Aboria (/path/to/Aboria/src) and include directories (/path/to/include) on your system
-# Usually the include path is in your home directory (~) or /usr/local/include
-# May also need include paths for OpenMP and HDF5
-CXXFLAGS := -I/path/to/Aboria/src -I/path/to/include -I/path/to/libomp/include -I/path/to/hdf5/include -O3 -std=c++17 -Wall -Wextra -march=armv8.5-a -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
 
-# You'll possibly have to edit these two flags too; currently configured for macOS
-HDF5_CXXFLAGS = -I/opt/homebrew/opt/hdf5/include
-HDF5_LDFLAGS = -L/opt/homebrew/opt/hdf5/lib -lhdf5_cpp -lhdf5
+# Replace with path to your Aboria/src directory
+ABORIA_DIR := /path/to/Aboria/src
+# General include path to other header-only dependencies; currently confgured for macOS
+INC_DIR := /opt/homebrew/include
+
+# You'll possibly have to edit these sets of flags too; currently configured for macOS
+HDF5_CXXFLAGS := -I/opt/homebrew/opt/hdf5/include
+HDF5_LDFLAGS := -L/opt/homebrew/opt/hdf5/lib -lhdf5_cpp -lhdf5
+OMP_CXXFLAGS := -I/opt/homebrew/opt/libomp/include -Xpreprocessor -fopenmp
+OMP_LDFLAGS := -L/opt/homebrew/opt/libomp/lib -lomp
+
+# Nothing here and below should ever need to be changed
+CXXFLAGS := -I$(ABORIA_DIR) -I$(INC_DIR) $(OMP_CXXFLAGS) -O2 -std=c++17 -march=armv8.5-a -Wall -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
 
 SOURCES := GroupFinderCore.cpp GroupFinderStatistics.cpp DataIO.cpp
 BUILD_DIR := build
@@ -29,10 +35,10 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 run_groupfinder_obs: $(BUILD_DIR) $(BUILD_DIR)/run_groupfinder_obs.o $(OBJECTS)
-	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -o $(BUILD_DIR)/$@ $(BUILD_DIR)/run_groupfinder_obs.o $(OBJECTS) $(HDF5_LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -o $(BUILD_DIR)/$@ $(BUILD_DIR)/run_groupfinder_obs.o $(OBJECTS) $(HDF5_LDFLAGS) ${OMP_LDFLAGS}
 
 run_groupfinder_sim: $(BUILD_DIR) $(BUILD_DIR)/run_groupfinder_sim.o $(OBJECTS)
-	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -o $(BUILD_DIR)/$@ $(BUILD_DIR)/run_groupfinder_sim.o $(OBJECTS) $(HDF5_LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -o $(BUILD_DIR)/$@ $(BUILD_DIR)/run_groupfinder_sim.o $(OBJECTS) $(HDF5_LDFLAGS) ${OMP_LDFLAGS}
 
 $(BUILD_DIR)/%.o: %.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(HDF5_CXXFLAGS) -c $< -o $@

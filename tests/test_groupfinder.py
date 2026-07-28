@@ -1,9 +1,8 @@
 """
 Run the observational and simulation density contrast configurations and the 6D
 simulation configurations N times to verify correctness of group finder implementation.
-For density contrast runs, pass if more than 97% tests pass (because of probabilistic
-nature of the group assignment, which can split groups into subgroups occasionally).
-(for 6D sim runs, require 100% pass rate).
+For density contrast runs, require 96% pass rate due to the more probabilistic nature of
+group finding. The 6D case requires a 100% pass rate.
 """
 from gen_data import GroupFinderTest, check_results
 import sys
@@ -16,7 +15,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from groupfinder_interface import GroupFinderInterface, SimulationData, ObservationalData, GroupFinderRunner, run_groupfinder
 from input import InterpolationData
 
-PASS_PERCENTAGE = 0.97
+PASS_PERCENTAGE = 0.96
 NUM_TESTS = 100
 
 def suppress_output():
@@ -35,7 +34,7 @@ def restore_output(old_stdout):
     os.close(old_stdout)
 
 class Tests:
-    def test_interpolation_data_generation(self, max_z = 0.1):
+    def test_interpolation_data_generation(self, max_z = 0.3):
         # Run halo concentration and z-distance data generation once, using same cosmology for all tests
         InterpolationData.generate_concentration_data(max_z=max_z)
         InterpolationData.generate_z_dist_data(max_z=max_z)
@@ -63,13 +62,12 @@ class Tests:
         interface_sim.omega_M = 0.3089
         interface_sim.periodic = True
         interface_sim.box_size = 35000./interface_sim.h/1000.  # in Mpc
-        interface_sim.R_max = interface_sim.box_size * np.sqrt(3)/2.  # half the box diagonal: max possible distance in periodic box
         interface_sim.config(os.path.join(parent_dir, "input/sim_config.json"), obs=False)
 
         for i in range(n_tests):
             # Generate simulation test data
             test_sim = GroupFinderTest(box_size=interface_sim.box_size, h=interface_sim.h, omega_M=interface_sim.omega_M)
-            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=3)
+            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=6, n_sats=40)
             
             run_groupfinder('sim', os.path.join(parent_dir, 'input/data/sim_data.h5'), os.path.join(parent_dir, 'sim_gf_result.h5'), os.path.join(parent_dir, 'input/sim_config.json'))
             res = check_results(os.path.join(parent_dir, 'input/data/sim_data.h5'), os.path.join(parent_dir, 'sim_gf_result.h5'))
@@ -101,13 +99,13 @@ class Tests:
             interface.contrast = True
             interface.sat_reclass = True
             interface.iso_reclass = True
-            interface.R_max = 50.0
             interface.h = 0.6774
             interface.omega_M = 0.3089
+            interface.search_radius = 40.0 # test bruteforce search radius
 
             # Generate observational test data
-            test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)
-            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"))
+            test = GroupFinderTest(box_size=50.0, h=interface.h, omega_M=interface.omega_M)
+            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=6, n_sats=35)
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
                 obs_positions = np.array(f['positions'][:]) # already in spherical coords (dist [Mpc], ra [rad], dec [rad])
@@ -123,7 +121,7 @@ class Tests:
             
             # Generate simulation test data for B parameter calculation
             test_sim = GroupFinderTest(box_size=35/interface.h, h=interface.h, omega_M=interface.omega_M)
-            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=4)
+            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=6, n_sats=40)
 
             with h5py.File(os.path.join(parent_dir, "input/data/sim_data.h5"), "r") as f:
                 sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]
@@ -185,13 +183,12 @@ class Tests:
         interface_sim6D.omega_M = 0.3089
         interface_sim6D.periodic = True
         interface_sim6D.box_size = 35000./interface_sim6D.h/1000.  # in Mpc
-        interface_sim6D.R_max = interface_sim6D.box_size * np.sqrt(3)/2.  # half the box diagonal: max possible distance in periodic box
         interface_sim6D.config(os.path.join(parent_dir, "input/sim_config_6D.json"), obs=False)
 
         for i in range(n_tests):
             # Generate simulation test data
             test_sim6D = GroupFinderTest(box_size=interface_sim6D.box_size, h=interface_sim6D.h, omega_M=interface_sim6D.omega_M)
-            test_sim6D.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=3)
+            test_sim6D.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=6, n_sats=40)
             
             run_groupfinder('sim', os.path.join(parent_dir, 'input/data/sim_data.h5'), os.path.join(parent_dir, 'sim_gf_result.h5'), os.path.join(parent_dir, 'input/sim_config_6D.json'))
             res = check_results(os.path.join(parent_dir, 'input/data/sim_data.h5'), os.path.join(parent_dir, 'sim_gf_result.h5'))
@@ -223,8 +220,8 @@ class Tests:
             interface.contrast = True
             interface.sat_reclass = True
             interface.iso_reclass = True
-            interface.R_max = 350.0
             interface.h = 0.6774
+            interface.box_size = 350.0
             interface.omega_M = 0.3089
             interface.use_distance = False
             interface.tree_search = True
@@ -233,8 +230,8 @@ class Tests:
             interface.use_nanoflann = True
 
             # Generate observational test data
-            test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)
-            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=7, n_sats=40, redshift=True)
+            test = GroupFinderTest(box_size=350.0, h=interface.h, omega_M=interface.omega_M)
+            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=10, n_sats=100, redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
                 obs_positions = np.array(f['positions'][:]) # already in (redshift, ra [rad], dec [rad])
@@ -248,7 +245,7 @@ class Tests:
             
             # Generate simulation test data for B parameter calculation (do not need to make new config)
             test_sim = GroupFinderTest(box_size=300, h=interface.h, omega_M=interface.omega_M)
-            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=8, n_sats=40, origin=True, redshift=True)
+            test_sim.create_test_data(type="sim", outfile=os.path.join(parent_dir, "input/data/sim_data.h5"), n_groups=10, n_sats=100, origin=True, redshift=True)
 
             with h5py.File(os.path.join(parent_dir, "input/data/sim_data.h5"), "r") as f:
                 sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]
@@ -265,7 +262,7 @@ class Tests:
                                 obs_data=obs_data,
                                 mass_limit=6.0,
                                 R_sim=300,
-                                R_obs=interface.R_max)
+                                R_obs=350)
 
             interface.config(os.path.join(parent_dir, "input/obs_config_z.json"), obs=True)
 

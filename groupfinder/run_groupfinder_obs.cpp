@@ -91,9 +91,9 @@ int main(int argc, char* argv[]) {
     bool sat_reclass_val = config_json["sat_reclass"].get<bool>();
     bool iso_reclass_val = config_json["iso_reclass"].get<bool>();
     bool contrast_val = config_json["contrast"].get<bool>();
-    double R_max = config_json["R_max"].get<double>();
-    double box_size = R_max; // For obs, box size can be set to any value
-    // but note the code will select all galaxies within R_max if R_max >= box_size * sqrt(3)/2,
+    double box_size = config_json["box_size"].get<double>(); // only used if Aboria tree search is enabled...
+    double search_radius = config_json["search_radius"].get<double>();
+    // if no tree search enabled, the code will select all galaxies within search_radius,
     // which could slow down the run and increase memory usage for large datasets (O(10^5))
     bool periodic = config_json["periodic"].get<bool>();
     double B_scaling = config_json["B_scaling"].get<double>();
@@ -102,10 +102,13 @@ int main(int argc, char* argv[]) {
     double omega_M = config_json["omega_M"].get<double>();
     bool chunk = config_json.value("chunk", false);
     size_t chunk_size = config_json.value("chunk_size", 1000000);
-    double R_h_max_override = config_json.value("R_h_max_override", -1.0);
     bool use_nanoflann = config_json.value("use_nanoflann", false);
     int leaf_size = config_json.value("leaf_size", 16);
     int n_threads = config_json.value("n_threads", 8);
+
+    if (tree_search_val && !use_nanoflann) {
+        box_size = 1.001 * gf::OBS_PROJECTION_RADIUS;
+    }
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -123,7 +126,6 @@ int main(int argc, char* argv[]) {
         iso_reclass_val,
         contrast_val,
         use_distance,
-        R_h_max_override,
         use_nanoflann,
         leaf_size,
         static_cast<IDType>(chunk_size),
@@ -146,7 +148,7 @@ int main(int argc, char* argv[]) {
             galaxy_data.ids, 
             galaxy_data.positions, 
             galaxy_data.velocities, 
-            R_max, 
+            search_radius, 
             B_scaling, 
             periodic
         );
@@ -166,7 +168,7 @@ int main(int argc, char* argv[]) {
             galaxy_data.ids, 
             galaxy_data.positions, 
             galaxy_data.velocities, 
-            R_max, 
+            search_radius, 
             B_scaling, 
             periodic
         );
@@ -213,7 +215,7 @@ int main(int argc, char* argv[]) {
         config.contrast,
         config.use_distance,
         box_size,
-        R_max,
+        search_radius,
         periodic,
         B_scaling,
         h_val,

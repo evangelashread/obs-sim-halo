@@ -16,6 +16,8 @@
 #include <cstdlib>
 #include <math.h>
 #include <string>
+#include <omp.h>
+#include <assert.h>
 //#include <malloc.h>
 
 namespace gf {
@@ -36,8 +38,11 @@ static inline Vec3 minimal(const Vec3& a, const Vec3& b, double L) {
 }
 
 static inline double critical_density(double z, double p_crit_0, double omega_m) {
-    /** @brief Compute the critical density rho at a given redshift */
-    return p_crit_0 * (omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
+ return p_crit_0 * (omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
+}
+
+static inline double Hubble(double z, double H, double omega_m) {
+   return H * std::sqrt(omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
 }
 
 static inline Vec3 celestial_to_cartesian(const Vec3& vec, const double& R) {
@@ -193,6 +198,7 @@ static double find_Mh(const double& z, double x0, double x1, double current_mass
 }
 
 static inline double VelocityLOS(const Vec3& pos, const Vec3& vel) {
+    /** @brief pos: in cartesian coordinates. vel: in x,y,z 3D vector form. */
     // Assume position and velocity is already defined relative to the observer
     double r2 = pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2];
     if(r2==0.) return 0.0; // This case occurs if the galaxy is the MW
@@ -222,7 +228,6 @@ HaloProps GroupFinder<D,V>::compute_halo_props(double z, double logMstar, double
 
 void summarize(const std::string& label, const std::vector<IDType>& group_label) {
     std::unordered_map<IDType,IDType> group_sizes;
-    group_sizes.reserve(group_label.size());
     for (size_t i = 0; i < group_label.size(); ++i) {
         IDType g = group_label[i];
         if (g == -1) {
@@ -457,73 +462,88 @@ void GroupFinder<D,V>::set_z_dist_table(std::vector<double> z_arr, std::vector<d
     tab_D_ = D_arr;
 }
 
-// This will generally take the index of one galaxy and the indices of its candidate neighbors
+// This will generally find the relative distance and velocity between two galaxies
 template<class D,class V>
-TransformOutput GroupFinder<D,V>::transform(size_t central_local, const std::vector<IDType>& local_indices) const {
+void GroupFinder<D,V>::transform(size_t central_local, size_t point_local, double& rel_dist, double& rel_vel, double& R_c_out) const {
+   
+    if (!config.obs) { // Check that this is simulation data
+        const auto& mw_c = MWcoords[central_local];
+        const auto& mw_s = MWcoords[point_local];
+        const auto& v_c = velocities_sorted[central_local];
+        const auto& v_s = velocities_sorted[point_local];
+        const auto& z_c = total_redshifts[central_local];
+        const auto& z_s = total_redshifts[point_local];
+        if constexpr (std::is_same_v<D,DistObs>) {
+            std::cerr << "Error: Distances must not be of type DistObs when using the 3D/2D distance methods." << std::endl;
+            std::abort();
+        } else {
+            rel_dist = dist_method(mw_c,mw_s,L);
+        }
+        if constexpr (std::is_same_v<V,VelPeculiar3D>) {
+            rel_vel = vel_method(v_c,v_s,L);
+        } else if constexpr (std::is_same_v<V,VelPeculiar2D>) {
+            rel_vel = vel_method(mw_c,mw_s,v_c,v_s);
+        } else if constexpr (std::is_same_v<V,VelTotal>) {
+            rel_vel = vel_method(z_c,z_s);
+        }
+        R_c_out = 0.0; // unused when not in obs mode
+    } else { // Observational data
+        double z_c = 0., v_c = 0.;
+        double R_c = positions_sorted[central_local][0];
+        if (config.use_distance) {
+            v_c  = velocities_sorted_obs[central_local];
+        } else {
+            z_c = total_redshifts[central_local];
+        }
+        const auto& Dec_c = positions_sorted[central_local][1];
+        const auto& RA_c = positions_sorted[central_local][2];
+        
+        const auto& Dec_s = positions_sorted[point_local][1];
+        const auto& RA_s = positions_sorted[point_local][2];
+        double z_s = 0., v_s = 0.;
+        if (config.use_distance) {
+            v_s = velocities_sorted_obs[point_local];
+        } else {
+            z_s = total_redshifts[point_local];
+        }
+        if constexpr (std::is_same_v<V,VelObs>) {
+            rel_vel = vel_method(v_c, v_s);
+        } else if constexpr (std::is_same_v<V,VelTotal>) {
+            rel_vel = vel_method(z_c, z_s);
+        } else {
+            std::cerr << "Error: Velocities must be of type VelObs or VelTotal when using the observational distance method." << std::endl;
+            std::abort();
+        }
+        if constexpr (std::is_same_v<D,DistObs>) {
+            rel_dist = dist_method(RA_c, Dec_c, RA_s, Dec_s, R_c);
+            R_c_out = R_c;
+        } else {
+            std::cerr << "Error: Distances must be of type DistObs when using the observational distance method." << std::endl;
+            std::abort();
+        }
+    }
+}
+
+template<class D,class V>
+TransformOutput GroupFinder<D,V>::transform_against_satellites(size_t central_local, const std::vector<IDType>& local_indices) const {
     TransformOutput tr;
     tr.rel_dists.resize(local_indices.size());
     tr.rel_vels.resize(local_indices.size());
     tr.R_cen.resize(local_indices.size());
-    if (!config.obs) { // Check that this is simulation data
-        const auto& mw_c = MWcoords[central_local];
-        const auto& v_cen  = velocities_sorted[central_local];
-        const auto& z_c = total_redshifts[central_local];
-        // Compute the distances and relative velocities
-        for(size_t i = 0; i < local_indices.size(); ++i){
-            size_t local_id = local_indices[i];
-            const auto& mw_s = MWcoords[local_id];
-            const auto& v_sat  = velocities_sorted[local_id];
-            const auto& z_s = total_redshifts[local_id];
-            if constexpr (std::is_same_v<D,DistObs>) {
-                std::cerr << "Error: Distances must not be of type DistObs when using the 3D/2D distance methods." << std::endl;
-                std::abort();
-            } else {
-                tr.rel_dists[i] = dist_method(mw_c,mw_s,L);
-            }
-            if constexpr (std::is_same_v<V,VelPeculiar3D>) {
-                tr.rel_vels[i] = vel_method(v_cen,v_sat,L);
-            } else if constexpr (std::is_same_v<V,VelPeculiar2D>) {
-                tr.rel_vels[i] = vel_method(mw_c,mw_s,v_cen,v_sat);
-            } else if constexpr (std::is_same_v<V,VelTotal>) {
-                tr.rel_vels[i] = vel_method(z_c,z_s);
-            }
-        } 
-    } else { // Observational data
-        double z_cen = 0., v_cen = 0.;
-        double R_cen = positions_sorted[central_local][0];
-        if (config.use_distance) {
-            v_cen  = velocities_sorted_obs[central_local];
-        } else {
-            z_cen = total_redshifts[central_local];
-        }
-        const auto& Dec_cen = positions_sorted[central_local][1];
-        const auto& RA_cen = positions_sorted[central_local][2];
-        for (size_t i = 0; i < local_indices.size(); ++i) {
-            size_t local_id = local_indices[i];
-            const auto& Dec_sat = positions_sorted[local_id][1];
-            const auto& RA_sat = positions_sorted[local_id][2];
-            double v_sat = 0., z_sat = 0.;
-            if (config.use_distance) {
-                v_sat = velocities_sorted_obs[local_id];
-            } else {
-                z_sat = total_redshifts[local_id];
-            }
-            if constexpr (std::is_same_v<V,VelObs>) {
-                tr.rel_vels[i] = vel_method(v_cen, v_sat);
-            } else if constexpr (std::is_same_v<V,VelTotal>) {
-                tr.rel_vels[i] = vel_method(z_cen, z_sat);
-            } else {
-                std::cerr << "Error: Velocities must be of type VelObs or VelTotal when using the observational distance method." << std::endl;
-                std::abort();
-            }
-            if constexpr (std::is_same_v<D,DistObs>) {
-                tr.rel_dists[i] = dist_method(RA_cen, Dec_cen, RA_sat, Dec_sat, R_cen);
-                tr.R_cen[i] = R_cen;
-            } else {
-                std::cerr << "Error: Distances must be of type DistObs when using the observational distance method." << std::endl;
-                std::abort();
-            }
-        }
+    for (size_t i = 0; i < local_indices.size(); ++i) {
+        transform(central_local, local_indices[i], tr.rel_dists[i], tr.rel_vels[i], tr.R_cen[i]);
+    }
+    return tr;
+}
+
+template<class D,class V>
+TransformOutput GroupFinder<D,V>::transform_against_centrals(size_t point_local, const std::vector<IDType>& central_candidates) const {
+    TransformOutput tr;
+    tr.rel_dists.resize(central_candidates.size());
+    tr.rel_vels.resize(central_candidates.size());
+    tr.R_cen.resize(central_candidates.size());
+    for (size_t i = 0; i < central_candidates.size(); ++i) {
+        transform(central_candidates[i], point_local, tr.rel_dists[i], tr.rel_vels[i], tr.R_cen[i]);
     }
     return tr;
 }
@@ -564,20 +584,26 @@ std::array<double, 2> GroupFinder<D,V>::density_contrast(IDType local_c_id, doub
 
     // estimate projected surface density at R200
     double rho_200_rho_crit = delta / (c * (1. + c)*(1. + c)); // dimensionless
-    double B = rho_200_rho_crit * (4.*R_200*H)/(3.*sigma_v); // dimensionless
-    double P_M = H * Sigma_R_rho_gal * p(rel_vel);
+    double B = rho_200_rho_crit * (4.*R_200*Hubble(z, H, OMEGA_M))/(3.*sigma_v); // dimensionless
+    double P_M = Hubble(z, H, OMEGA_M) * Sigma_R_rho_gal * p(rel_vel);
     return {P_M, B};
 }
 
 template<class D,class V>
-void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const double& scale) {
+void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, const double& scale) {
     // Implementation for reassigning satellites
-    // Build a tree of all group centrals and isolated centrals
     assert(classification.size() == positions_sorted.size());
+    size_t n_central = 0, n_satellite = 0;
+    for (size_t i = 0; i < classification.size(); ++i) {
+        if (classification[i] == 0 || classification[i] == 1) ++n_central;
+        else if (classification[i] == 2) ++n_satellite;
+    }
     std::vector<IDType> central_indices; // indices into positions_sorted
     std::vector<Vec3> central_positions;
     std::vector<IDType> satellite_indices; // indices into positions_sorted
-    //std::unordered_map<IDType, IDType> central_map; // map from index in positions_sorted to index in central_indices
+    central_indices.reserve(n_central);
+    central_positions.reserve(n_central);
+    satellite_indices.reserve(n_satellite);
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0 || classification[i] == 1) { // 0 = group central, 1 = isolated central
             central_indices.push_back((IDType)i);
@@ -598,144 +624,176 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
     int reclassified = 0;
     IDType classified = IDType(0);
     size_t N = satellite_indices.size();
-    //std::vector<double> B_values(central_indices.size());
-    std::vector<IDType> cand;
-    std::vector<double> ratios;
-    std::vector<double> P_M_cands;
-    std::vector<IDType> new_cands;
-    cand.reserve(64);
-    ratios.reserve(64);
-    P_M_cands.reserve(64);
-    new_cands.reserve(64);
-
-    for (size_t s = 0; s < N; ++s) {
-        classified += IDType(1);
-        IDType local_s_id = satellite_indices[s]; // index into positions_sorted
-        if (config.tree_search) { // Returns local indices
-            if (!config.obs) {
-                cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, 1.5 * sel.R_h_group * R_h_max); // returns value from central_indices
-            } else {
-                // since we are searching in RA/Dec space, just use the distance of the maximum virial radius
-                cand = tree->kdtree_search((size_t)local_s_id, cartesian_from_RA_Dec, 1.5 * sel.R_h_group * R_h_max * (Rmax / positions_sorted[local_s_id][0]));
+    double d_T = sel.R_h_group * R_h_max; // max transverse distance the criterion allows
+    
+    // only used in obs mode when tree search is enabled
+    std::vector<IDType> near_field_central_indices;
+    if (config.obs && config.tree_search && N > NEAR_FIELD_GATE_N) {
+        for (IDType idx : central_indices) {
+            if (positions_sorted[(size_t)idx][0] <= near_field_cutoff + BUFFER*near_field_Rmax) {
+                near_field_central_indices.push_back(idx);
             }
-        } else { // Returns local indices
-            if (Rmax >= L * std::sqrt(3) / 2.0) {
-                cand = central_indices; // All centrals are candidates
-            } else {
-                cand = bruteforce_search((size_t)local_s_id, positions_sorted, central_indices, Rmax, L, periodic, config.obs); // returns value from central_indices
-            }
-        }
-        if (cand.empty()) {
-            std::cerr << "Error: No candidate centrals found for satellite index " << local_s_id << std::endl;
-            std::abort();
-        }
-        ratios.clear();
-        P_M_cands.clear();
-        new_cands.clear();
-        for (size_t k = 0; k < cand.size(); ++k) {
-            size_t local_c_id = cand[k]; // index into positions_sorted
-            // Using one tree for everything means our search returns ALL nearby galaxies, not just centrals 
-            if (classification[local_c_id] != 0 && classification[local_c_id] != 1) continue;
-
-            auto tr = transform((size_t)local_c_id, (std::vector<IDType>){local_s_id});
-            double rel_dist = tr.rel_dists[0];
-            double rel_vel = tr.rel_vels[0];
-            double R_h_cand = halo_props[local_c_id].R_h;
-            double V_vir_cand = halo_props[local_c_id].V_vir;
-            double ratio = (rel_dist / (sel.R_h_group * R_h_cand))*(rel_dist / (sel.R_h_group * R_h_cand)) 
-                            + (rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)))*(rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)));
-            double mass_cand = masses_sorted[local_c_id];
-            
-            if (config.contrast) {
-                std::array<double,2> dens = density_contrast(local_c_id, rel_dist, rel_vel);
-                double P_M = dens[0];
-                double B = dens[1]*scale;
-                //B_values[(size_t)central_map[local_c_id]] = B;
-                if (P_M > B && masses_sorted[(size_t)local_s_id] < mass_cand) {
-                    new_cands.push_back(cand[k]);
-                    P_M_cands.push_back(P_M);
-                }
-            } else {
-                if (config.vel_cut) {
-                    if (rel_dist <= sel.R_h_group * R_h_cand && masses_sorted[(size_t)local_s_id] < mass_cand
-                        && std::fabs(rel_vel) <= sel.V_vir_group * V_vir_cand / std::sqrt(2.0)) {
-                        ratios.push_back(ratio);
-                        new_cands.push_back(cand[k]);
-                    }
-                } else {
-                    if (rel_dist <= sel.R_h_group * R_h_cand && masses_sorted[(size_t)local_s_id] < mass_cand) {
-                        ratios.push_back(ratio);
-                        new_cands.push_back(cand[k]);
-                    }
-                }
-            }
-        }
-
-        if (config.contrast) {
-            int max_index = -1;
-            if (P_M_cands.empty()) {
-                // The satellite remains in its current group
-                // Unlikely to occur, since a satellite must meet all criteria above to have been assigned to a group in part 1
-                std::cerr << "Error: No candidate centrals passed criteria for satellite index " << local_s_id << std::endl;
-                continue;
-            } else if (P_M_cands.size() == 1) {
-                max_index = 0;
-                IDType local_c_id = new_cands[max_index];
-                // If the assigned central is different from the one assigned in part 1, count it as reclassified
-                if (group_label[(size_t)local_s_id] != local_c_id) {
-                    reclassified += 1;
-                    group_label[(size_t)local_s_id] = local_c_id;
-                }
-            } else {
-                // More than one candidate remains, assign to group with largest value of P_M
-                auto max_it = std::max_element(P_M_cands.begin(), P_M_cands.end());
-                max_index = std::distance(P_M_cands.begin(), max_it);
-                // Get the ID of the central assigned to the satellite
-                IDType local_c_id = new_cands[max_index];
-                // If the assigned central is different from the one assigned in part 1, count it as reclassified
-                if (group_label[(size_t)local_s_id] != local_c_id) {
-                    reclassified += 1;
-                    group_label[(size_t)local_s_id] = local_c_id;
-                }
-            }
-        } else {
-            int min_index = -1;
-            if (ratios.empty()) {
-                // The satellite remains in its current group
-                // Unlikely to occur, since a satellite must meet all criteria above to have been assigned to a group in part 1
-                std::cerr << "Error: No candidate centrals passed criteria for satellite index " << local_s_id << std::endl;
-                continue;
-            } else if (ratios.size() == 1) {
-                min_index = 0;
-                IDType local_c_id = new_cands[min_index];
-                // If the assigned central is different from the one assigned in part 1, count it as reclassified
-                if (group_label[(size_t)local_s_id] != local_c_id) {
-                    reclassified += 1;
-                    group_label[(size_t)local_s_id] = local_c_id;
-                }
-            } else {
-                // More than one candidate remains, find the one with the smallest ratio
-                auto min_it = std::min_element(ratios.begin(), ratios.end());
-                min_index = std::distance(ratios.begin(), min_it);
-                // Get the ID of the central assigned to the satellite
-                IDType local_c_id = new_cands[min_index];
-                // If the assigned central is different from the one assigned in part 1, count it as reclassified
-                if (group_label[(size_t)local_s_id] != local_c_id) {
-                    reclassified += 1;
-                    group_label[(size_t)local_s_id] = local_c_id;
-                }
-            }
-        }
-        cand.clear();
-        if (classified % config.chunk_readout == IDType(0)) { 
-            double percent_classified = 100.0 * (static_cast<double>(classified) / static_cast<double>(N)); 
-            std::cout << "\r" << percent_classified << " percent of galaxies have been initially classified. " << std::flush; 
         }
     }
+
+    omp_set_num_threads(config.n_threads);
+    #pragma omp parallel
+    {
+        std::vector<IDType> cand;
+        std::vector<double> ratios;
+        std::vector<double> P_M_cands;
+        std::vector<IDType> new_cands;
+        cand.reserve(64);
+        ratios.reserve(64);
+        P_M_cands.reserve(64);
+        new_cands.reserve(64);
+
+        #pragma omp for schedule(dynamic, 64) reduction(+:reclassified)
+        for (size_t s = 0; s < N; ++s) {
+            IDType local_s_id = satellite_indices[s]; // index into positions_sorted
+            if (config.tree_search) { // Returns local indices
+                double search_radius_3d = 0.0;
+                if (!config.obs) {
+                    if (config.dim == 6) {
+                        search_radius_3d = d_T; // spherical in 6D
+                    } else { 
+                        double los_margin = sel.V_vir_group * V_vir_max * (1.0 + total_redshifts[(size_t)local_s_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_s_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
+                        search_radius_3d = std::sqrt(d_T*d_T + los_margin*los_margin);
+                    }
+                    cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, BUFFER * search_radius_3d); // returns value from central_indices
+                } else {
+                    // if the data set is sufficiently large, default to brute force search in the near field to prevent a search radius that is too large
+                    if (positions_sorted[(size_t)local_s_id][0] < near_field_cutoff && N > NEAR_FIELD_GATE_N) {
+                        cand = bruteforce_search((size_t)local_s_id, positions_sorted, near_field_central_indices, BUFFER * near_field_Rmax, L, periodic, config.obs); // L is unused in obs mode
+                    } else { // since we are searching in RA/Dec space, just use something scaled by the distance of the maximum virial radius
+                        cand = tree->kdtree_search((size_t)local_s_id, cartesian_from_RA_Dec,
+                            BUFFER * sel.R_h_group * R_h_max * (OBS_PROJECTION_RADIUS / positions_sorted[local_s_id][0]));
+                    }
+                }
+            } else { // Returns local indices
+                if (search_radius <= 0.0) {
+                    cand = central_indices; // All centrals are candidates
+                } else {
+                    cand = bruteforce_search((size_t)local_s_id, positions_sorted, central_indices, search_radius, L, periodic, config.obs); // returns value from central_indices
+                }
+            }
+            if (cand.empty()) {
+                std::cerr << "Error: No candidate centrals found for satellite index " << local_s_id << std::endl;
+                std::abort();
+            }
+            ratios.clear();
+            P_M_cands.clear();
+            new_cands.clear();
+
+            auto tr = transform_against_centrals((size_t)local_s_id, cand);
+
+            for (size_t k = 0; k < cand.size(); ++k) {
+                size_t local_c_id = cand[k]; // index into positions_sorted
+                // Using one tree for everything means our search returns ALL nearby galaxies, not just centrals 
+                if (classification[local_c_id] != 0 && classification[local_c_id] != 1) continue;
+
+                double rel_dist = tr.rel_dists[k];
+                double rel_vel = tr.rel_vels[k];
+                double R_h_cand = halo_props[local_c_id].R_h;
+                double V_vir_cand = halo_props[local_c_id].V_vir;
+                double ratio = (rel_dist / (sel.R_h_group * R_h_cand))*(rel_dist / (sel.R_h_group * R_h_cand)) 
+                                + (rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)))*(rel_vel / (sel.V_vir_group * V_vir_cand / std::sqrt(2.0)));
+                double mass_cand = masses_sorted[local_c_id];
+                
+                if (config.contrast) {
+                    std::array<double,2> dens = density_contrast(local_c_id, rel_dist, rel_vel);
+                    double P_M = dens[0];
+                    double B = dens[1]*scale;
+                    if (P_M > B && masses_sorted[(size_t)local_s_id] < mass_cand) {
+                        new_cands.push_back(cand[k]);
+                        P_M_cands.push_back(P_M);
+                    }
+                } else {
+                    if (config.vel_cut) {
+                        if (rel_dist <= sel.R_h_group * R_h_cand && masses_sorted[(size_t)local_s_id] < mass_cand
+                            && std::fabs(rel_vel) <= sel.V_vir_group * V_vir_cand / std::sqrt(2.0)) {
+                            ratios.push_back(ratio);
+                            new_cands.push_back(cand[k]);
+                        }
+                    } else {
+                        if (rel_dist <= sel.R_h_group * R_h_cand && masses_sorted[(size_t)local_s_id] < mass_cand) {
+                            ratios.push_back(ratio);
+                            new_cands.push_back(cand[k]);
+                        }
+                    }
+                }
+            }
+
+            if (config.contrast) {
+                int max_index = -1;
+                if (P_M_cands.empty()) {
+                    // The satellite remains in its current group
+                    // Unlikely to occur, since a satellite must meet all criteria above to have been assigned to a group in part 1
+                    std::cerr << "Error: No candidate centrals passed criteria for satellite index " << local_s_id << std::endl;
+                    continue;
+                } else if (P_M_cands.size() == 1) {
+                    max_index = 0;
+                    IDType local_c_id = new_cands[max_index];
+                    // If the assigned central is different from the one assigned in part 1, count it as reclassified
+                    if (group_label[(size_t)local_s_id] != local_c_id) {
+                        reclassified += 1;
+                        group_label[(size_t)local_s_id] = local_c_id;
+                    }
+                } else {
+                    // More than one candidate remains, assign to group with largest value of P_M
+                    auto max_it = std::max_element(P_M_cands.begin(), P_M_cands.end());
+                    max_index = std::distance(P_M_cands.begin(), max_it);
+                    // Get the ID of the central assigned to the satellite
+                    IDType local_c_id = new_cands[max_index];
+                    // If the assigned central is different from the one assigned in part 1, count it as reclassified
+                    if (group_label[(size_t)local_s_id] != local_c_id) {
+                        reclassified += 1;
+                        group_label[(size_t)local_s_id] = local_c_id;
+                    }
+                }
+            } else {
+                if (ratios.empty()) {
+                    // The satellite remains in its current group
+                    // Unlikely to occur; a satellite usually meets all criteria above to have been assigned to a group in part 1
+                    std::cerr << "Error: No candidate centrals passed criteria for satellite index " << local_s_id << std::endl;
+                    continue;
+                } else if (ratios.size() == 1) {
+                    IDType local_c_id = new_cands[0];
+                    // If the assigned central is different from the one assigned in part 1, count it as reclassified
+                    if (group_label[(size_t)local_s_id] != local_c_id) {
+                        reclassified += 1;
+                        group_label[(size_t)local_s_id] = local_c_id;
+                    }
+                } else {
+                    // More than one candidate remains, find the one with the smallest ratio
+                    auto min_it = std::min_element(ratios.begin(), ratios.end());
+                    int min_index = std::distance(ratios.begin(), min_it);
+                    // Get the ID of the central assigned to the satellite
+                    IDType local_c_id = new_cands[min_index];
+                    // If the assigned central is different from the one assigned in part 1, count it as reclassified
+                    if (group_label[(size_t)local_s_id] != local_c_id) {
+                        reclassified += 1;
+                        group_label[(size_t)local_s_id] = local_c_id;
+                    }
+                }
+            }
+            cand.clear();
+            IDType local_count;
+            #pragma omp atomic capture
+            local_count = ++classified;
+            if (local_count % config.chunk_readout == IDType(0)) {
+                #pragma omp critical(sat_progress_print)
+                {
+                    double percent_classified = 100.0 * (static_cast<double>(local_count) / static_cast<double>(N));
+                    std::cout << "\r" << percent_classified << " percent of galaxies have been initially classified. " << std::flush;
+                }
+            }
+        } // end of for loop through all satellites
+    } // end of parallel region
     std::cout << " " << std::endl;
 
     std::unordered_map<IDType,int> group_sizes;
-    group_sizes.reserve(group_label.size());
+    group_sizes.reserve(central_indices.size());
     for (size_t i = 0; i < group_label.size(); ++i) {
         IDType g = group_label[i];
         if (g == IDType(-1)) {
@@ -763,12 +821,22 @@ void GroupFinder<D,V>::reassign_satellites(double Rmax, bool periodic, const dou
 }
 
 template<class D,class V>
-void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const double& scale) {
-    // Build tree of group centrals only
+void GroupFinder<D,V>::reassign_isolated(double search_radius, bool periodic, const double& scale) {
+    // reassign isolated centrals to nearby groups if they aren't truly isolated
     std::vector<IDType> group_central_indices;
     std::vector<Vec3> group_central_positions;
     std::vector<IDType> isolated_central_indices;
     assert(classification.size() == positions_sorted.size());
+
+    size_t n_group_central = 0, n_isolated = 0;
+    for (size_t i = 0; i < classification.size(); ++i) {
+        if (classification[i] == 0) ++n_group_central;
+        else if (classification[i] == 1) ++n_isolated;
+    }
+    group_central_indices.reserve(n_group_central);
+    group_central_positions.reserve(n_group_central);
+    isolated_central_indices.reserve(n_isolated);
+
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0) { // 0 = group central
             group_central_indices.push_back(i);
@@ -785,180 +853,219 @@ void GroupFinder<D,V>::reassign_isolated(double Rmax, bool periodic, const doubl
     size_t N = isolated_central_indices.size();
     int reclassified = 0;
     IDType classified = IDType(0);
-    std::vector<IDType> cand;
-    std::vector<double> ratios, P_M_cands, B_cands;
-    std::vector<double> relative_velocities, relative_distances, halo_radii, halo_velocities;
-    for (size_t i = 0; i < N; ++i) {
-        classified += IDType(1);
-        IDType local_i_id = isolated_central_indices[i];
-        if (config.tree_search) {
-            if (!config.obs) {
-                cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, 1.5 * sel.R_h_iso * R_h_max); // value from group_central_indices
-            } else {
-                cand = tree->kdtree_search((size_t)local_i_id, cartesian_from_RA_Dec, 1.5 * sel.R_h_iso * R_h_max * (Rmax / positions_sorted[local_i_id][0])); 
+    double d_T = sel.R_h_iso * R_h_max; // max transverse distance the criterion allows
+
+    // only used in obs mode when tree search is enabled
+    std::vector<IDType> near_field_central_indices;
+    if (config.obs && config.tree_search && N > NEAR_FIELD_GATE_N) {
+        for (IDType idx : group_central_indices) {
+            if (positions_sorted[(size_t)idx][0] <= near_field_cutoff + BUFFER*near_field_Rmax) {
+                near_field_central_indices.push_back(idx);
             }
-            // Filter down to group centrals when using one tree for everything
-            std::vector<IDType> filtered;
-            filtered.reserve(cand.size());
+        }
+    }
+
+    omp_set_num_threads(config.n_threads);
+    #pragma omp parallel
+    {
+        std::vector<IDType> cand;
+        std::vector<IDType> filtered;
+        std::vector<double> ratios, P_M_cands, B_cands;
+        std::vector<double> relative_velocities, relative_distances, halo_radii, halo_velocities;
+        cand.reserve(64);
+        filtered.reserve(64);
+
+        #pragma omp for schedule(dynamic, 64) reduction(+:reclassified)
+        for (size_t i = 0; i < N; ++i) {
+            IDType local_i_id = isolated_central_indices[i];
+            if (config.tree_search) {
+                double search_radius_3d = 0.0;
+                if (!config.obs) {
+                    if (config.dim == 6) {
+                        search_radius_3d = d_T; // spherical in 6D
+                    } else { 
+                        double los_margin = sel.V_vir_iso * V_vir_max * (1.0 + total_redshifts[(size_t)local_i_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_i_id], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
+                        search_radius_3d = std::sqrt(d_T*d_T + los_margin*los_margin);
+                    }
+                    cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, BUFFER * search_radius_3d); // returns value from central_indices
+                } else {
+                    // if the data set is sufficiently large, default to brute force search in the near field to prevent a search radius that is too large
+                    if (positions_sorted[(size_t)local_i_id][0] < near_field_cutoff && N > NEAR_FIELD_GATE_N) {
+                        cand = bruteforce_search((size_t)local_i_id, positions_sorted, near_field_central_indices, BUFFER * near_field_Rmax, L, periodic, config.obs); // L is unused in obs mode
+                    } else { // since we are searching in RA/Dec space, just use something scaled by the distance of the maximum virial radius
+                        cand = tree->kdtree_search((size_t)local_i_id, cartesian_from_RA_Dec,
+                            BUFFER * sel.R_h_iso * R_h_max * (OBS_PROJECTION_RADIUS / positions_sorted[local_i_id][0]));
+                    }
+                }
+            } else { // tree_search == false
+                if (search_radius <= 0.0) {
+                    cand = group_central_indices;
+                } else {
+                    cand = bruteforce_search((size_t)local_i_id, positions_sorted, group_central_indices, search_radius, L, periodic, config.obs);
+                }
+            }
+            if (cand.empty()) {
+                std::cout << "Warning: No candidate group centrals found for isolated central index " << local_i_id << std::endl;
+                continue;
+            }
+            filtered.clear();
             for (IDType id : cand) {
                 if (classification[(size_t)id] == 0) filtered.push_back(id);
             }
-            cand = std::move(filtered);
-        } else {
-            if (Rmax >= L * std::sqrt(3) / 2.0) {
-                cand = group_central_indices; // All group centrals are candidates
-            } else {
-                cand = bruteforce_search((size_t)local_i_id, positions_sorted, group_central_indices, Rmax, L, periodic, config.obs); // value from group_central_indices
-            }
-        }
-        if (cand.empty()) {
-            std::cout << "Warning: No candidate group centrals found for isolated central index " << local_i_id << std::endl;
-            continue;
-        }
-        if (config.contrast) {
-            P_M_cands.resize(cand.size());
-            B_cands.resize(cand.size());
-        }
-        ratios.resize(cand.size());
-        relative_velocities.resize(cand.size());
-        relative_distances.resize(cand.size());
-        halo_radii.resize(cand.size());
-        halo_velocities.resize(cand.size());
-        for (size_t k = 0; k < cand.size(); ++k) {
-            size_t local_gc_id = cand[k]; // index into positions_sorted
-            auto tr = transform(local_gc_id, (std::vector<IDType>){local_i_id});
-            relative_distances[k] = tr.rel_dists[0];
-            relative_velocities[k] = tr.rel_vels[0];
-            halo_radii[k] = halo_props[local_gc_id].R_h;
-            halo_velocities[k] = halo_props[local_gc_id].V_vir;
-            ratios[k] = (tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h))*(tr.rel_dists[0] / (sel.R_h_group * halo_props[local_gc_id].R_h)) 
-                        + (tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)))*(tr.rel_vels[0] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)));
+            std::swap(cand, filtered);
             if (config.contrast) {
-                std::array<double,2> dens = density_contrast(local_gc_id, relative_distances[k], tr.rel_vels[0]);
-                P_M_cands[k] = dens[0];
-                B_cands[k] = dens[1]*scale;
+                P_M_cands.resize(cand.size());
+                B_cands.resize(cand.size());
             }
-        }
-        // To remain an isolated central, it must be more than twice the virial radius away from any group central
-        bool isolated = true;
-        for (int k = 0; k < cand.size(); ++k) {
-            if (relative_distances[k] <= sel.R_h_iso*halo_radii[k]
-                && relative_velocities[k] <= sel.V_vir_iso*halo_velocities[k] / std::sqrt(2.0)) {
-                isolated = false;
-                break;
-            }
-        }
-        if (config.contrast) {
-            if (isolated == true) {
-                // compute the background levels relative to the nearest centrals
-                std::vector<int> dist_order(cand.size());
-                std::iota(dist_order.begin(), dist_order.end(), 0);
-                std::stable_sort(dist_order.begin(), dist_order.end(),
-                    [&](int a,int b){return relative_distances[a] < relative_distances[b];});
-                std::vector<double> dists_sorted(cand.size());
-                std::vector<double> B_sorted(cand.size());
-                std::vector<double> vels_sorted(cand.size());
-                std::vector<double> V_vir_sorted(cand.size());
-                std::vector<double> R_h_sorted(cand.size());
-                std::vector<double> P_M_sorted(cand.size());
-                for (int m = 0; m < cand.size(); ++m) {
-                    dists_sorted[m] = relative_distances[dist_order[m]];
-                    B_sorted[m] = B_cands[dist_order[m]];
-                    vels_sorted[m] = relative_velocities[dist_order[m]];
-                    V_vir_sorted[m] = halo_velocities[dist_order[m]];
-                    R_h_sorted[m] = halo_radii[dist_order[m]];
-                    P_M_sorted[m] = P_M_cands[dist_order[m]];
-                }
-            } else if (isolated == false) {
-                bool found_central = false;
-                int max_index = -1;
-                int N_exit = 0;
-                // Copy the ratios vector to avoid modifying the original
-                std::vector<double> P_M_copy = P_M_cands;
-                while (!found_central && N_exit < cand.size()) {
-                    auto max_it = std::max_element(P_M_copy.begin(), P_M_copy.end());
-                    // Safety check: if maximum P_M is minimal, all candidates exhausted
-                    if (*max_it == std::numeric_limits<double>::lowest()) break;
-                    // Compute the index of the maximum P_M
-                    max_index = std::distance(P_M_copy.begin(), max_it);
-                    if (P_M_cands[max_index] > (sel.R_h_iso/sel.V_vir_iso) * B_cands[max_index]
-                        && masses_sorted[(size_t)local_i_id] < masses_sorted[cand[max_index]]) {
-                        found_central = true;
-                    } else {
-                        // If the relative velocity is too high, remove this candidate (set to lowest)
-                        P_M_copy[max_index] = std::numeric_limits<double>::lowest();
-                        continue;
-                    }
-                    N_exit++; // Increment exit counter to avoid infinite loop
-                } 
+            ratios.resize(cand.size());
+            relative_velocities.resize(cand.size());
+            relative_distances.resize(cand.size());
+            halo_radii.resize(cand.size());
+            halo_velocities.resize(cand.size());
 
-                // If the isolated central does not meet the velocity criteria, simply keep it as a field galaxy
-                if (!found_central) continue;
-                else {
-                    // Get the group ID of the central assigned to the isolated central and reassign
-                    IDType local_c_id = cand[max_index];
-                    if (local_c_id != local_i_id) {
-                        classification[(size_t)local_i_id] = 2; // Reclassified as satellite
-                        group_label[(size_t)local_i_id] = local_c_id; // Reassign to the new group
-                        reclassified += 1;
-                    }
+            auto tr = transform_against_centrals((size_t)local_i_id, cand);
+
+            for (size_t k = 0; k < cand.size(); ++k) {
+                size_t local_gc_id = cand[k]; // index into positions_sorted
+                relative_distances[k] = tr.rel_dists[k];
+                relative_velocities[k] = tr.rel_vels[k];
+                halo_radii[k] = halo_props[local_gc_id].R_h;
+                halo_velocities[k] = halo_props[local_gc_id].V_vir;
+                ratios[k] = (tr.rel_dists[k] / (sel.R_h_group * halo_props[local_gc_id].R_h))*(tr.rel_dists[k] / (sel.R_h_group * halo_props[local_gc_id].R_h)) 
+                            + (tr.rel_vels[k] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)))*(tr.rel_vels[k] / (sel.V_vir_group * halo_props[local_gc_id].V_vir / std::sqrt(2.0)));
+                if (config.contrast) {
+                    std::array<double,2> dens = density_contrast(local_gc_id, relative_distances[k], tr.rel_vels[k]);
+                    P_M_cands[k] = dens[0];
+                    B_cands[k] = dens[1]*scale;
                 }
             }
-        } else {
-            if (isolated == false) {
-                bool found_central = false;
-                int min_index = -1;
-                int N_exit = 0;
-                // Copy the ratios vector to avoid modifying the original
-                std::vector<double> ratios_copy = ratios;
-                while (!found_central && N_exit < cand.size()) {
-                    auto min_it = std::min_element(ratios_copy.begin(), ratios_copy.end());
-                    // Safety check: if minimum ratio is infinity, all candidates exhausted
-                    if (*min_it == std::numeric_limits<double>::max()) break;
-                    // Compute the index of the minimum ratio
-                    min_index = std::distance(ratios_copy.begin(), min_it);
-                    if (config.vel_cut) {
-                        if (std::fabs(relative_velocities[min_index]) <= sel.V_vir_iso*halo_velocities[min_index] / std::sqrt(2.0) 
-                            && relative_distances[min_index] <= sel.R_h_iso*halo_radii[min_index]
-                            && masses_sorted[(size_t)local_i_id] < masses_sorted[cand[min_index]]
-                        ) {
+            // To remain an isolated central, it must be more than twice the virial radius away from any group central
+            bool isolated = true;
+            for (int k = 0; k < cand.size(); ++k) {
+                if (relative_distances[k] <= sel.R_h_iso*halo_radii[k]
+                    && relative_velocities[k] <= sel.V_vir_iso*halo_velocities[k] / std::sqrt(2.0)) {
+                    isolated = false;
+                    break;
+                }
+            }
+            if (config.contrast) {
+                if (isolated == true) {
+                    // compute the background levels relative to the nearest centrals
+                    std::vector<int> dist_order(cand.size());
+                    std::iota(dist_order.begin(), dist_order.end(), 0);
+                    std::stable_sort(dist_order.begin(), dist_order.end(),
+                        [&](int a,int b){return relative_distances[a] < relative_distances[b];});
+                    std::vector<double> dists_sorted(cand.size());
+                    std::vector<double> B_sorted(cand.size());
+                    std::vector<double> vels_sorted(cand.size());
+                    std::vector<double> V_vir_sorted(cand.size());
+                    std::vector<double> R_h_sorted(cand.size());
+                    std::vector<double> P_M_sorted(cand.size());
+                    for (int m = 0; m < cand.size(); ++m) {
+                        dists_sorted[m] = relative_distances[dist_order[m]];
+                        B_sorted[m] = B_cands[dist_order[m]];
+                        vels_sorted[m] = relative_velocities[dist_order[m]];
+                        V_vir_sorted[m] = halo_velocities[dist_order[m]];
+                        R_h_sorted[m] = halo_radii[dist_order[m]];
+                        P_M_sorted[m] = P_M_cands[dist_order[m]];
+                    }
+                } else if (isolated == false) {
+                    bool found_central = false;
+                    int max_index = -1;
+                    int N_exit = 0;
+                    // Copy the ratios vector to avoid modifying the original
+                    std::vector<double> P_M_copy = P_M_cands;
+                    while (!found_central && N_exit < cand.size()) {
+                        auto max_it = std::max_element(P_M_copy.begin(), P_M_copy.end());
+                        // Safety check: if maximum P_M is minimal, all candidates exhausted
+                        if (*max_it == std::numeric_limits<double>::lowest()) break;
+                        // Compute the index of the maximum P_M
+                        max_index = std::distance(P_M_copy.begin(), max_it);
+                        if (P_M_cands[max_index] > (sel.R_h_iso/sel.V_vir_iso) * B_cands[max_index]
+                            && masses_sorted[(size_t)local_i_id] < masses_sorted[cand[max_index]]) {
                             found_central = true;
                         } else {
-                            // If the relative velocity is too high, remove this candidate (set to max)
-                            ratios_copy[min_index] = std::numeric_limits<double>::max();
+                            // If the relative velocity is too high, remove this candidate (set to lowest)
+                            P_M_copy[max_index] = std::numeric_limits<double>::lowest();
                             continue;
                         }
-                    } else {
-                        if (relative_distances[min_index] <= sel.R_h_iso*halo_radii[min_index] 
-                            && masses_sorted[(size_t)local_i_id] < masses_sorted[cand[min_index]]) {
-                            found_central = true;
-                        } else {
-                            ratios_copy[min_index] = std::numeric_limits<double>::max();
-                            continue;
+                        N_exit++; // Increment exit counter to avoid infinite loop
+                    } 
+
+                    // If the isolated central does not meet the velocity criteria, simply keep it as a field galaxy
+                    if (!found_central) continue;
+                    else {
+                        // Get the group ID of the central assigned to the isolated central and reassign
+                        IDType local_c_id = cand[max_index];
+                        if (local_c_id != local_i_id) {
+                            classification[(size_t)local_i_id] = 2; // Reclassified as satellite
+                            group_label[(size_t)local_i_id] = local_c_id; // Reassign to the new group
+                            reclassified += 1;
                         }
                     }
-                    N_exit++; // Increment exit counter to avoid infinite loop
-                } 
+                }
+            } else {
+                if (isolated == false) {
+                    bool found_central = false;
+                    int min_index = -1;
+                    int N_exit = 0;
+                    // Copy the ratios vector to avoid modifying the original
+                    std::vector<double> ratios_copy = ratios;
+                    while (!found_central && N_exit < cand.size()) {
+                        auto min_it = std::min_element(ratios_copy.begin(), ratios_copy.end());
+                        // Safety check: if minimum ratio is infinity, all candidates exhausted
+                        if (*min_it == std::numeric_limits<double>::max()) break;
+                        // Compute the index of the minimum ratio
+                        min_index = std::distance(ratios_copy.begin(), min_it);
+                        if (config.vel_cut) {
+                            if (std::fabs(relative_velocities[min_index]) <= sel.V_vir_iso*halo_velocities[min_index] / std::sqrt(2.0) 
+                                && relative_distances[min_index] <= sel.R_h_iso*halo_radii[min_index]
+                                && masses_sorted[(size_t)local_i_id] < masses_sorted[cand[min_index]]
+                            ) {
+                                found_central = true;
+                            } else {
+                                // If the relative velocity is too high, remove this candidate (set to max)
+                                ratios_copy[min_index] = std::numeric_limits<double>::max();
+                                continue;
+                            }
+                        } else {
+                            if (relative_distances[min_index] <= sel.R_h_iso*halo_radii[min_index] 
+                                && masses_sorted[(size_t)local_i_id] < masses_sorted[cand[min_index]]) {
+                                found_central = true;
+                            } else {
+                                ratios_copy[min_index] = std::numeric_limits<double>::max();
+                                continue;
+                            }
+                        }
+                        N_exit++; // Increment exit counter to avoid infinite loop
+                    } 
 
-                // If the isolated central does not meet the velocity criteria, simply keep it as a field galaxy
-                if (!found_central) continue;
-                else {
-                    // Get the group ID of the central assigned to the isolated central and reassign
-                    IDType local_c_id = cand[min_index];
-                    if (local_c_id != local_i_id) {
-                        classification[(size_t)local_i_id] = 2; // Reclassified as satellite
-                        group_label[(size_t)local_i_id] = local_c_id; // Reassign to the new group
-                        reclassified += 1;
+                    // If the isolated central does not meet the velocity criteria, simply keep it as a field galaxy
+                    if (!found_central) continue;
+                    else {
+                        // Get the group ID of the central assigned to the isolated central and reassign
+                        IDType local_c_id = cand[min_index];
+                        if (local_c_id != local_i_id) {
+                            classification[(size_t)local_i_id] = 2; // Reclassified as satellite
+                            group_label[(size_t)local_i_id] = local_c_id; // Reassign to the new group
+                            reclassified += 1;
+                        }
                     }
                 }
             }
-        }
-        cand.clear();
-        if (classified % config.chunk_readout == IDType(0)) { 
-            double percent_classified = 100.0 * (static_cast<double>(classified) / static_cast<double>(N)); 
-            std::cout << "\r" << percent_classified << " percent of isolated centrals have been reviewed for reclassification. " << std::flush; 
-        }
-    }
+            cand.clear();
+            IDType local_count;
+            #pragma omp atomic capture
+            local_count = ++classified;
+            if (local_count % config.chunk_readout == IDType(0)) {
+                #pragma omp critical(iso_progress_print)
+                {
+                    double percent_classified = 100.0 * (static_cast<double>(local_count) / static_cast<double>(N));
+                    std::cout << "\r" << percent_classified << " percent of isolated centrals have been reviewed for reclassification. " << std::flush;
+                }
+            }
+        } // end of for loop through all isocentrals
+    } // end of parallel region 
     std::cout << " " << std::endl;
     
     std::cout << reclassified << " isolated centrals reclassified as satellites" << std::endl;
@@ -1040,16 +1147,15 @@ void GroupFinder<D,V>::initialize(const std::vector<FloatType>& masses_unsorted,
     std::cout << "Done calculating halo properties and initializing sorted arrays." << std::endl;
     
     if (config.tree_search) {
-        if (config.R_h_max_override > 0.0) {
-            R_h_max = config.R_h_max_override;
-        } else {
-            FloatType r_h_max_val = std::numeric_limits<FloatType>::lowest();
-            for (size_t i = 0; i < N; ++i) {
-                if (halo_props[i].R_h > r_h_max_val) r_h_max_val = halo_props[i].R_h;
-            }
-            R_h_max = static_cast<double>(r_h_max_val);
+        FloatType r_h_max_val = std::numeric_limits<FloatType>::lowest();
+        FloatType v_vir_max_val = std::numeric_limits<FloatType>::lowest();
+        for (size_t i = 0; i < N; ++i) {
+            if (halo_props[i].R_h > r_h_max_val) r_h_max_val = halo_props[i].R_h;
+            if (halo_props[i].V_vir > v_vir_max_val) v_vir_max_val = halo_props[i].V_vir;
         }
-        std::cout << "Done calculating R_h_max: " << R_h_max << " Mpc" << std::endl;
+        R_h_max = static_cast<double>(r_h_max_val);
+        V_vir_max = static_cast<double>(v_vir_max_val);
+        std::cout << "Done calculating R_h_max: " << R_h_max << " Mpc, V_vir_max: " << V_vir_max << " km/s" << std::endl;
     }
     mass_order.clear();
 }
@@ -1108,69 +1214,98 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<FloatType>& masses_unsor
 
     if (config.tree_search) {
         cartesian_from_RA_Dec.resize(N);
-        if (config.R_h_max_override > 0.0) {
-            R_h_max = config.R_h_max_override;
-        } else {
-            FloatType r_h_max_val = std::numeric_limits<FloatType>::lowest();
-            for (size_t i = 0; i < N; ++i) {
-                if (halo_props[i].R_h > r_h_max_val) r_h_max_val = halo_props[i].R_h;
-            }
-            R_h_max = static_cast<double>(r_h_max_val);
+        FloatType r_h_max_val = std::numeric_limits<FloatType>::lowest();
+        FloatType v_vir_max_val = std::numeric_limits<FloatType>::lowest();
+        for (size_t i = 0; i < N; ++i) {
+            if (halo_props[i].R_h > r_h_max_val) r_h_max_val = halo_props[i].R_h;
+            if (halo_props[i].V_vir > v_vir_max_val) v_vir_max_val = halo_props[i].V_vir;
         }
-        std::cout << "Done calculating R_h_max: " << R_h_max << " Mpc" << std::endl;
+        R_h_max = static_cast<double>(r_h_max_val);
+        V_vir_max = static_cast<double>(v_vir_max_val);
+        // We need to define a near field boundary so that when projected onto a sphere of much larger radius, 
+        // searches around nearby galaxies don't return hundreds of millions of candidates.
+        // Below this value, we will default to a brute force search.
+        // Let's let this distance be 75 Mpc, which should also be comfortably above near_field_Rmax.
+        // Back-of-the-envelope suggests this could produce ~4 million candidates, while bruteforce inside this distance
+        // will involve about ~500,000 candidates. This should be OK...
+        near_field_cutoff = 75.0;
+        near_field_Rmax = V_vir_max * (std::max(sel.V_vir_iso, sel.V_vir_group) / 2.0) * ((1.0 + z_from_D(near_field_cutoff)) / Hubble(z_from_D(near_field_cutoff), H, OMEGA_M)); // motivated by maxmimum LOS radius due to the FoG effect at z ~ 0
+        std::cout << "Done calculating R_h_max: " << R_h_max << " Mpc, V_vir_max: " << V_vir_max << " km/s, near_field_Rmax: " << near_field_Rmax << " Mpc" << std::endl;
     }
     mass_order.clear();
 }
 
 template<class D,class V>
 std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
-GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& periodic) {
+GroupFinder<D,V>::classify(const double& search_radius, const double& scale, const bool& periodic) {
     /** @brief The work horse of the entire group finder */
 
     size_t N = masses_sorted.size();
     // If kdtree, initialize the AboriaNeighborBuilder class
     // Rebuild the tree upon every call to the class
     if (config.tree_search) {
-        tree.reset();
         if (!config.obs) {
             tree = std::make_unique<AboriaNeighborBuilder>(positions_sorted, local_ids, 0.0, L, periodic, config.leaf_size, config.n_threads, config.use_nanoflann);
         } else {
             // Convert dec (1st index) and RA (2nd index) to cartesian coords and build tree from it
             for (size_t v = 0; v < N; ++v) {
                 Vec3 vec = {1., positions_sorted[v][1], positions_sorted[v][2]};
-                cartesian_from_RA_Dec[v] = celestial_to_cartesian(vec, Rmax);
+                cartesian_from_RA_Dec[v] = celestial_to_cartesian(vec, OBS_PROJECTION_RADIUS);
             }
             tree = std::make_unique<AboriaNeighborBuilder>(cartesian_from_RA_Dec, local_ids, -L, L, periodic, config.leaf_size, config.n_threads, config.use_nanoflann);
         }
         std::cout << "Done building kd tree for initial classification." << std::endl;
     }
 
+    std::vector<IDType> near_field_central_indices;
+    if (config.obs && config.tree_search && N > NEAR_FIELD_GATE_N) {
+        for (IDType idx : local_ids) { // recall that the zeroth index is always radius
+            if (positions_sorted[(size_t)idx][0] <= near_field_cutoff + BUFFER*near_field_Rmax) {
+                near_field_central_indices.push_back(idx);
+            }
+        }
+    }
+
     group_label.assign(N, IDType(-1)); // -1 means unassigned
     IDType classified = IDType(0);
+
     for(size_t c = 0; c < N; ++c){
         classified += IDType(1);
         if (group_label[c] != IDType(-1)) continue; // The central has already been assigned a group
 
         // Find the candidate satellites
         std::vector<IDType> cand;
-        if (config.tree_search) {
+        if (config.tree_search) { // Returns local indices
+            double d_T = sel.R_h_group * halo_props[c].R_h; // max transverse distance the criterion allows
+            double search_radius_3d = 0.0;
             if (!config.obs) {
-                cand = tree->kdtree_search(c, positions_sorted, 1.5 * sel.R_h_group * halo_props[c].R_h);
+                if (config.dim == 6) {
+                    search_radius_3d = d_T; // spherical in 6D
+                } else { 
+                    double los_margin = sel.V_vir_group * halo_props[c].V_vir * (1.0 + total_redshifts[c]) / (std::sqrt(2.0) * Hubble(total_redshifts[c], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
+                    search_radius_3d = std::sqrt(d_T*d_T + los_margin*los_margin);
+                }
+                cand = tree->kdtree_search(c, positions_sorted, BUFFER * search_radius_3d); 
             } else {
-                cand = tree->kdtree_search(c, cartesian_from_RA_Dec, 1.5 * sel.R_h_group * halo_props[c].R_h * (Rmax / positions_sorted[c][0]));
+                // if the data set is sufficiently large, default to brute force search in the near field to prevent a search radius that is too large
+                if (N > NEAR_FIELD_GATE_N && positions_sorted[c][0] < near_field_cutoff) {
+                    cand = bruteforce_search(c, positions_sorted, near_field_central_indices, BUFFER * near_field_Rmax, L, periodic, config.obs); // L is unused in obs mode
+                } else { // since we are searching in RA/Dec space, just use something scaled by the distance of the maximum virial radius
+                    cand = tree->kdtree_search(c, cartesian_from_RA_Dec, BUFFER * sel.R_h_group * R_h_max * (OBS_PROJECTION_RADIUS / positions_sorted[c][0]));
+                }
             }
-        } else {
-            if (Rmax >= L * std::sqrt(3) / 2.0) {
+        } else { // Returns local indices
+            if (search_radius <= 0.0) {
                 cand = local_ids; // All galaxies are candidates
             } else {
-                cand = bruteforce_search(c, positions_sorted, local_ids, Rmax, L, periodic, config.obs);
+                cand = bruteforce_search(c, positions_sorted, local_ids, search_radius, L, periodic, config.obs);
             }
         }
         if (cand.empty()) {
             std::cerr << "Error: No candidate satellites found for central index " << c << std::endl;
             std::abort();
         }
-        auto tr = transform(c, cand);
+        auto tr = transform_against_satellites(c, cand);
 
         int sat_count = 0;
         for (size_t k = 0; k < cand.size(); ++k) {
@@ -1221,10 +1356,17 @@ GroupFinder<D,V>::classify(const double& Rmax, const double& scale, const bool& 
     std::cout << " " << std::endl;
     
     summarize("After initial classification", group_label);
+    //malloc_trim(0);
     // Apply satellite classification if requested
-    if (config.sat_reclass) reassign_satellites(Rmax, periodic, scale);
+    if (config.sat_reclass) {
+        reassign_satellites(search_radius, periodic, scale);
+        //malloc_trim(0);
+    }
     // Apply isolated central classification if requested
-    if (config.iso_reclass) reassign_isolated(Rmax, periodic, scale);
+    if (config.iso_reclass) {
+        reassign_isolated(search_radius, periodic, scale);
+        //malloc_trim(0);
+    }
 
     // Get the unique indices, which correspond to groups
     std::vector<IDType> labels = group_label;
@@ -1309,7 +1451,7 @@ GroupFinder<D,V>::run_once(
         std::vector<Vec3>& positions_box,
         std::vector<Vec3>& velocities_pec,
         const Vec3& MW_pos_box, const Vec3& MW_vel_pec, 
-        const double& Rmax, const double& scale, bool periodic) {
+        const double& search_radius, const double& scale, bool periodic) {
     /**
      * @brief High-level function for running the sim group finder.
      * Gets called directly by external code.
@@ -1324,7 +1466,7 @@ GroupFinder<D,V>::run_once(
     positions_box.shrink_to_fit();
     velocities_pec.shrink_to_fit();
     //malloc_trim(0);
-    return classify(Rmax, scale, periodic);
+    return classify(search_radius, scale, periodic);
 }
 
 template<class D,class V>
@@ -1334,7 +1476,7 @@ GroupFinder<D,V>::run_once_obs(
         std::vector<IDType>& groupcat_ids,
         std::vector<Vec3>& positions,
         std::vector<FloatType>& velocities_los,
-        const double& Rmax, const double& scale,
+        const double& search_radius, const double& scale,
         bool periodic) {
     /**
      * @brief High-level function for running the observational group finder.
@@ -1349,7 +1491,7 @@ GroupFinder<D,V>::run_once_obs(
     positions.shrink_to_fit();
     velocities_los.shrink_to_fit();
     //malloc_trim(0);
-    return classify(Rmax, scale, periodic);
+    return classify(search_radius, scale, periodic);
 }
 };
 

@@ -397,56 +397,42 @@ void HDF5Handler::writeResults(
         // Write boolean config settings as attributes
         config_group.createAttribute("kdtree_search_used", 
                                     H5::PredType::NATIVE_HBOOL, 
-                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                      &config.kdtree_search_used);
+                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.kdtree_search_used);
         config_group.createAttribute("satellite_reclassification_performed", 
                                     H5::PredType::NATIVE_HBOOL, 
-                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                      &config.satellite_reclassification_performed);
+                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.satellite_reclassification_performed);
         config_group.createAttribute("isocentral_reclassification_performed", 
                                     H5::PredType::NATIVE_HBOOL, 
-                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                      &config.isocentral_reclassification_performed);
+                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.isocentral_reclassification_performed);
         config_group.createAttribute("velocity_cut_imposed", 
                                     H5::PredType::NATIVE_HBOOL, 
-                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                      &config.velocity_cut_imposed);
+                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.velocity_cut_imposed);
         config_group.createAttribute("use_comoving_distance", 
                                     H5::PredType::NATIVE_HBOOL, 
-                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                      &config.use_comoving_distance);
+                                    H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.use_comoving_distance);
         // Write selection criteria values as attributes (for redundancy)
         config_group.createAttribute("R_h_group", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.R_h_group);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.R_h_group);
         config_group.createAttribute("V_vir_group", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.V_vir_group);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.V_vir_group);
         config_group.createAttribute("R_h_iso", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.R_h_iso);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.R_h_iso);
         config_group.createAttribute("V_vir_iso", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.V_vir_iso);
-
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.V_vir_iso);
         config_group.createAttribute("density_contrast", H5::PredType::NATIVE_HBOOL, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                       &config.contrast_val);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.contrast_val);
         config_group.createAttribute("box_size", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.box_size);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.box_size);
+        config_group.createAttribute("search_radius", H5::PredType::NATIVE_DOUBLE, 
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.search_radius);
         config_group.createAttribute("periodic", H5::PredType::NATIVE_HBOOL, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, 
-                                                                       &config.periodic);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_HBOOL, &config.periodic);
         config_group.createAttribute("B_scaling", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.B_scaling);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.B_scaling);
         config_group.createAttribute("h", H5::PredType::NATIVE_DOUBLE, 
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, 
-                                                                       &config.h);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.h);
         config_group.createAttribute("omega_M", H5::PredType::NATIVE_DOUBLE,
-                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE,
-                                                                       &config.omega_M);
+                                     H5::DataSpace(H5S_SCALAR)).write(H5::PredType::NATIVE_DOUBLE, &config.omega_M);
         
         // Output statistics group
         H5::Group stats_group(file.createGroup("/statistics"));

@@ -14,14 +14,15 @@ interface.V_vir_iso = 3.0
 interface.contrast = True
 interface.sat_reclass = True
 interface.iso_reclass = True
-interface.R_max = 50.0
 interface.h = 0.6774
 interface.omega_M = 0.3089
 interface.use_distance = True
+interface.tree_search = True
+interface.use_nanoflann = True
 
 # Generate observational test data (or add your own)
-test = GroupFinderTest(box_size=interface.R_max, h=interface.h, omega_M=interface.omega_M)
-test.create_test_data(type="obs", outfile="input/data/test_obs_data.h5")
+test = GroupFinderTest(box_size=50.0, h=interface.h, omega_M=interface.omega_M)
+test.create_test_data(type="obs", outfile="input/data/test_obs_data.h5", n_groups=50, n_sats=400)
 
 with h5py.File("input/data/test_obs_data.h5", "r") as f:
     obs_positions = np.array(f['positions'][:]) # in spherical coords (dist [Mpc], dec [radians], RA [radians])
@@ -39,7 +40,7 @@ print("Loaded observational data.")
 
 # Generate simulation test data for B parameter calculation
 test_sim = GroupFinderTest(box_size=35/interface.h, h=interface.h, omega_M=interface.omega_M)
-test_sim.create_test_data(type="sim", outfile="input/data/sim_data.h5", n_groups=4)
+test_sim.create_test_data(type="sim", outfile="input/data/sim_data.h5", n_groups=60, n_sats=500)
 
 with h5py.File("input/data/sim_data.h5", "r") as f:
     sim_positions = np.array(f['positions'][:]) # in physical Cartesian box coords [Mpc]

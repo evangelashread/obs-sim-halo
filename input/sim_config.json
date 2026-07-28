@@ -12,7 +12,7 @@
     "iso_reclass": true,
     "contrast": true,
     "box_size": 51.668142899320934,
-    "R_max": 44.74592431717649,
+    "search_radius": -1.0,
     "periodic": true,
     "B_scaling": 1.0,
     "h": 0.6774,
@@ -21,6 +21,5 @@
     "use_distance": true,
     "chunk": false,
     "chunk_size": 1000000,
-    "R_h_max_override": -1.0,
     "use_nanoflann": false
 }

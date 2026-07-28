@@ -82,7 +82,7 @@ struct GroupFinderConfig {
     bool contrast_val;
     bool use_comoving_distance;
     double box_size;
-    double R_max;
+    double search_radius;
     bool periodic;
     double B_scaling;
     double h;

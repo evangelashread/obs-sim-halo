@@ -161,8 +161,7 @@ class GroupFinderInterface:
         self.sat_reclass = True
         self.iso_reclass = True
         self.contrast = True
-        self.box_size = 50.0  # Example box size in Mpc; not required for observational data
-        self.R_max = 50.0 * np.sqrt(3) / 2.0  # Example max distance for search
+        self.box_size = 50.0  # Example box size in Mpc. Required for any tree search. Set to >=Rmax for obs data 
         self.periodic = True  # Periodic boundary conditions
         self.B_scaling = 1.0  # Scaling factor for B in density-contrast classification
         self.h = 0.6774  # Hubble parameter
@@ -170,9 +169,8 @@ class GroupFinderInterface:
         self.use_distance = True
         self.chunk = False
         self.chunk_size = 1_000_000
-        self.R_h_max_override = -1.0 # option to override the default behavior of calculating a maximum search radius from the precomputed halo properties for all potential halos
-            # Optionally set R_h_max to a value >0 Mpc 
         self.use_nanoflann = False
+        self.search_radius = -1.0 # max radius for brute force search. Not used if <=0 Mpc
     def config(self, filename: str, obs=False):
         # write values to json file
         with open(filename, 'w') as f:
@@ -182,15 +180,15 @@ class GroupFinderInterface:
                 "V_vir_group": self.V_vir_group,
                 "R_h_iso": self.R_h_iso,
                 "V_vir_iso": self.V_vir_iso,
-                "vel_cut": self.vel_cut if self.use_distance and not self.contrast else True,
+                "vel_cut": self.vel_cut if not self.contrast else True,
                 "tree_search": self.tree_search,
                 "leaf_size": self.leaf_size,
                 "n_threads": self.n_threads,
                 "sat_reclass": self.sat_reclass,
                 "iso_reclass": self.iso_reclass,
                 "contrast": self.contrast,
-                "box_size": self.box_size if not obs else None,
-                "R_max": self.R_max,
+                "box_size": self.box_size,
+                "search_radius": self.search_radius if not self.tree_search else -1.0,
                 "periodic": self.periodic if not obs else False,
                 "B_scaling": self.B_scaling,
                 "h": self.h,
@@ -199,7 +197,6 @@ class GroupFinderInterface:
                 "use_distance": self.use_distance if obs else True,
                 "chunk": self.chunk,
                 "chunk_size": self.chunk_size,
-                "R_h_max_override": self.R_h_max_override,
                 "use_nanoflann": self.use_nanoflann,
             }, f, indent=4)
 

@@ -10,7 +10,7 @@ ObsSimHalo offers two main approaches for identifying galaxy groups:
 
 2. An adaptation of the popular [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) algorithm that classifies galaxies using their number density contrast in redshift/velocity space. This method is better suited for like-for-like comparisons of observational and simulation data.
 
-This algorithm has been tested with [TNG data](https://www.tng-project.org/data/) and observational data sourced from the 50 Mpc Galaxy Catalog ([Ohlson et al. 2024](https://github.com/davidohlson/50MGC)) and the [DESI Extragalactic Dwarf Galaxy Catalog](https://data.desi.lbl.gov/doc/releases/dr1/vac/extragalactic-dwarfs/). It has also been successfully tested at O(10^9)!
+This algorithm has been tested with [TNG data](https://www.tng-project.org/data/) and observational data sourced from the 50 Mpc Galaxy Catalog ([Ohlson et al. 2024](https://github.com/davidohlson/50MGC)) and the [DESI Extragalactic Dwarf Galaxy Catalog](https://data.desi.lbl.gov/doc/releases/dr1/vac/extragalactic-dwarfs/). It has also been tested at O(10^9)!
 
 This can handle survey or simulation data out to any redshift. Flat lambdaCDM is assumed.
 
@@ -24,14 +24,21 @@ When using the density-contrast method, it's recommended to scale the parameter 
 
 ### C++ Dependencies
 
-- **C++ compiler**: g++ with C++17 support
+- **C++ compiler**: g++ with C++17 and OpenMP support
+  - Linux: g++ includes OpenMP by default
+  - macOS: Either
+    - `brew install gcc`
+    - If using clang, `brew install libomp`. Then compile with `-Xpreprocessor -fopenmp` and link with `-L$(brew --prefix libomp)/lib -lomp` (see Makefile)
 - **HDF5**: Version 1.8+ with C++ bindings
   - Ubuntu/Debian: `sudo apt-get install libhdf5-dev libhdf5-cpp-103`
   - macOS: `brew install hdf5`
-- **Aboria**: Header-only C++ library for neighbor searching
+- **nanoflann**: Header-only C++ library for kd tree nearest-neighbor search — **version >=1.5.0 required**
+  - Clone from: https://github.com/jlblancoc/nanoflann
+  - **Note:** Aboria bundles its own older copy of nanoflann internally (`Aboria/third-party/nanoflann/nanoflann.hpp`). You may have to wrap a newer version and ensure that it gets included first before Aboria's.
+- **Aboria**: Header-only C++ library for k-d tree neighbor searching
   - Clone from: https://github.com/martinjrobins/Aboria
   - Set include path in Makefile to Aboria location
-- **nlohmann/json**: Header-only JSON library (usually at `/usr/include/nlohmann/`)
+- **nlohmann/json**: Header-only JSON library
   - Ubuntu/Debian: `sudo apt-get install nlohmann-json3-dev`
   - macOS: `brew install nlohmann-json`
 
@@ -59,10 +66,10 @@ Required packages:
    ```
 
 2. **Configure C++ compilation**:
-   This doesn't have a CMakeLists file at the moment, so after installing the C++ dependencies listed above, edit the Makefile in the `groupfinder/` directory to set paths for:
-   - Aboria headers (`-I/path/to/Aboria/src`)
-   - Include path (`-I/path/to/include`)
-   - HDF5 and OpenMP include paths (if not in standard locations)
+   This doesn't have a CMakeLists file at the moment, so after installing the C++ dependencies listed above, edit the following linker and compiler flags in Makefile in the `groupfinder/` directory:
+   - Aboria header directory (`ABORIA_DIR`)
+   - General include path for all other header-only dependencies (`INC_DIR`)
+   - HDF5 (`HDF5_CXXFLAGS`, `HDF5_LDFLAGS`) and OpenMP (`OMP_CXXFLAGS`, `OMP_LDFLAGS`)
 
 3. **Build the C++ executables**:
    ```bash
@@ -75,7 +82,6 @@ Required packages:
    ```
    pytest tests/test_groupfinder.py
    ```
-   Run to ensure your installation is working.
 
 ## Usage
 
@@ -93,7 +99,7 @@ interface.h = 0.7
 interface.omega_M = 0.3
 # ...
 
-# Write to JSON
+# Write config to JSON
 interface.config('input/obs_config.json', obs=True)
 
 # Prepare data
@@ -106,12 +112,12 @@ obs_data = ObservationalData(
 obs_data.write_to_hdf5('input/data/input_file.h5')
 
 # Generate halo-mass-concentration data, redshift-distance, and SMHM data for group finder
-# Note that you might have to adjust the cosmology manually in InterpolationData (this should be made configurable in a later update)
+# Note that you might have to adjust the cosmology manually in InterpolationData (this should be made configurable in a later update..)
 InterpolationData.generate_concentration_data()
 InterpolationData.generate_z_dist_data()
 InterpolationData.generate_smhm_inverse_data()
 
-# Run group finder
+# Run
 run_groupfinder('obs', 'input/data/input_file.h5', 'output_file.h5', 'input/obs_config.json')
 ```
 
@@ -155,6 +161,7 @@ run_groupfinder('sim', input_file(s), output_file(s), 'input/sim_config.json')
 - `box_size`: Length of 3D simulation box. Not needed for observation config
 - `R_max`: Maximum search radius for brute force nearest neighbors search
 - `use_distance`: Relevant for observational mode. Whether to use comoving distance + peculiar velocity OR redshift only.
+- `n_threads`: How many threads to use for parallelization. If you want to run in serial, set to 1.
 - `use_nanoflann`: Build a tree using nanoflann instead of Aboria. This is much more memory efficient for data volumes of order >10^8. The number of threads used for parallel nanoflann tree construction can be set with `n_threads`.
 
 ## Output
@@ -168,7 +175,7 @@ Results are saved to HDF5 files with these contents:
 
 ## Examples
 
-See `example_obs.py` and `example_sim.py` for complete working examples with user-generated test data. 
+See `example_obs1.py`, `example_obs2.py` and `example_sim.py` for complete working examples with user-generated test data. 
 
 ## Contributions
 

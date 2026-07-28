@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <tuple>
 #include <algorithm>
+#include <omp.h>
 
 namespace gf {
 
@@ -59,6 +60,10 @@ inline constexpr double GF_G = 4.30091727e-9; // Mpc (km/s)^2 / Msun
 inline constexpr double GF_BOX_SIZE = 35000./GF_h/1000.; // Mpc, can be defined from config
 inline constexpr double GF_C = 299792.458; // km/s
 inline constexpr double GF_OMEGA_M = 0.3089;
+inline constexpr double OBS_PROJECTION_RADIUS = 10000;
+
+inline constexpr size_t NEAR_FIELD_GATE_N = 10; // set to something larger than your data size if you don't want to use this
+inline constexpr double BUFFER = 1.5;
 
 /* ################# Define distance methods ################ */
 struct DistPerp2D {
@@ -108,7 +113,6 @@ struct GroupFinderSettings {
     bool contrast; // True or false
     bool use_distance; // True if using distance and peculiar velocity for obs classification, False if using redshift and velocity for obs classification
                         // This is generally always true for simulation data, since redshifts can be computed from distances and velocities in this code
-    double R_h_max_override;
     bool use_nanoflann;
     int leaf_size;
     IDType chunk_readout;
@@ -148,7 +152,7 @@ public:
         std::vector<Vec3>& positions_box,
         std::vector<Vec3>& velocities_pec,
         const Vec3& MW_pos_box, const Vec3& MW_vel_pec,
-        const double& Rmax, const double& scale,
+        const double& search_radius, const double& scale,
         bool periodic = true);
 
     std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
@@ -157,7 +161,7 @@ public:
         std::vector<IDType>& groupcat_ids,
         std::vector<Vec3>& positions_unsorted,
         std::vector<FloatType>& velocities_los,
-        const double& Rmax, const double& scale,
+        const double& search_radius, const double& scale,
         bool periodic = false);
 
     SelectionCriteria sel;  // selection criteria for groups and isolated centrals
@@ -165,7 +169,11 @@ public:
 private:
     double L, H, OMEGA_M;
     bool periodic;
-    double R_h_max; // computed once at runtime, only if configured in observation mode with tree search
+    double R_h_max; // computed once at runtime, only if configured with tree search and if dim = 3
+    double V_vir_max; // same as above
+    double near_field_Rmax;
+    double near_field_cutoff;
+
     std::vector<IDType> groupcat_ids_sorted; // sorted groupcat ids
     std::vector<FloatType> masses_sorted;  // sorted masses in log_10 solar masses
     std::vector<Vec3> positions_sorted; // sorted 3D cartesian/spherical positions
@@ -184,10 +192,12 @@ private:
 
     // function for group classification
     std::tuple<GroupsResult, std::vector<IDType>, std::vector<FloatType>>
-    classify(const double& Rmax, const double& scale, const bool& periodic);
+    classify(const double& search_radius, const double& scale, const bool& periodic);
 
-    // general function for transforming the 3D vectors to projected components
-    TransformOutput transform(size_t central_local, const std::vector<IDType>& local_indices) const;
+    // general functions for transforming the 3D relative vectors to projected components
+    void transform(size_t central_local, size_t point_local, double& rel_dist, double& rel_vel, double& R_c_out) const;
+    TransformOutput transform_against_satellites(size_t central_local, const std::vector<IDType>& local_indices) const;
+    TransformOutput transform_against_centrals(size_t point_local, const std::vector<IDType>& central_candidates) const;
     
     void initialize(const std::vector<FloatType>& masses_unsorted,
             const std::vector<IDType>& groupcat_ids,
@@ -204,9 +214,9 @@ private:
     std::unique_ptr<AboriaNeighborBuilder> tree;
     std::vector<HaloProps> halo_props;
 
-    void reassign_satellites(double Rmax, bool periodic, const double& scale);
+    void reassign_satellites(double search_radius, bool periodic, const double& scale);
 
-    void reassign_isolated(double Rmax, bool periodic, const double& scale);
+    void reassign_isolated(double search_radius, bool periodic, const double& scale);
 
     std::array<double,2> density_contrast(IDType local_c_id, double trans_dist, double rel_vel);
 
