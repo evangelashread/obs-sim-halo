@@ -60,9 +60,6 @@ inline constexpr double GF_G = 4.30091727e-9; // Mpc (km/s)^2 / Msun
 inline constexpr double GF_BOX_SIZE = 35000./GF_h/1000.; // Mpc, can be defined from config
 inline constexpr double GF_C = 299792.458; // km/s
 inline constexpr double GF_OMEGA_M = 0.3089;
-inline constexpr double OBS_PROJECTION_RADIUS = 10000;
-
-inline constexpr size_t NEAR_FIELD_GATE_N = 10; // set to something larger than your data size if you don't want to use this
 inline constexpr double BUFFER = 1.5;
 
 /* ################# Define distance methods ################ */
@@ -171,8 +168,6 @@ private:
     bool periodic;
     double R_h_max; // computed once at runtime, only if configured with tree search and if dim = 3
     double V_vir_max; // same as above
-    double near_field_Rmax;
-    double near_field_cutoff;
 
     std::vector<IDType> groupcat_ids_sorted; // sorted groupcat ids
     std::vector<FloatType> masses_sorted;  // sorted masses in log_10 solar masses

@@ -91,8 +91,8 @@ int main(int argc, char* argv[]) {
     bool sat_reclass_val = config_json["sat_reclass"].get<bool>();
     bool iso_reclass_val = config_json["iso_reclass"].get<bool>();
     bool contrast_val = config_json["contrast"].get<bool>();
-    double box_size = config_json["box_size"].get<double>(); // only used if Aboria tree search is enabled...
-    double search_radius = config_json["search_radius"].get<double>();
+    double box_size = config_json["box_size"].get<double>(); // only used if Aboria tree search is enabled
+    double search_radius = config_json["search_radius"].get<double>(); // only used in case of brute force search
     // if no tree search enabled, the code will select all galaxies within search_radius,
     // which could slow down the run and increase memory usage for large datasets (O(10^5))
     bool periodic = config_json["periodic"].get<bool>();
@@ -105,10 +105,6 @@ int main(int argc, char* argv[]) {
     bool use_nanoflann = config_json.value("use_nanoflann", false);
     int leaf_size = config_json.value("leaf_size", 16);
     int n_threads = config_json.value("n_threads", 8);
-
-    if (tree_search_val && !use_nanoflann) {
-        box_size = 1.001 * gf::OBS_PROJECTION_RADIUS;
-    }
     
     SelectionCriteria sel{
         R_h_group_val,

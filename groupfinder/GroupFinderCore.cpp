@@ -45,16 +45,15 @@ static inline double Hubble(double z, double H, double omega_m) {
    return H * std::sqrt(omega_m * std::pow(1.0 + z, 3) + (1.0 - omega_m));
 }
 
-static inline Vec3 celestial_to_cartesian(const Vec3& vec, const double& R) {
+static inline Vec3 celestial_to_cartesian(const Vec3& vec) {
     /** 
     @brief Convert celestial to cartesian coordinates. 
     Assumed that input vector is in the form (r, theta or dec [rad], phi or RA [rad]), where dec ranges 
-    from [-pi/2, pi/2] and RA from [0, 2pi). Place on a sphere with radius R >> 1 in order to avoid incurring
-    floating point error from placing many points on the surface of a sphere that is to small.
+    from [-pi/2, pi/2] and RA from [0, 2pi).
     */
-    double x = R * std::cos(vec[1]) * std::cos(vec[2]);
-    double y = R * std::cos(vec[1]) * std::sin(vec[2]);
-    double z = R * std::sin(vec[1]);
+    double x = vec[0] * std::cos(vec[1]) * std::cos(vec[2]);
+    double y = vec[0] * std::cos(vec[1]) * std::sin(vec[2]);
+    double z = vec[0] * std::sin(vec[1]);
     return {static_cast<FloatType>(x), static_cast<FloatType>(y), static_cast<FloatType>(z)};
 }
 
@@ -625,16 +624,6 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
     IDType classified = IDType(0);
     size_t N = satellite_indices.size();
     double d_T = sel.R_h_group * R_h_max; // max transverse distance the criterion allows
-    
-    // only used in obs mode when tree search is enabled
-    std::vector<IDType> near_field_central_indices;
-    if (config.obs && config.tree_search && N > NEAR_FIELD_GATE_N) {
-        for (IDType idx : central_indices) {
-            if (positions_sorted[(size_t)idx][0] <= near_field_cutoff + BUFFER*near_field_Rmax) {
-                near_field_central_indices.push_back(idx);
-            }
-        }
-    }
 
     omp_set_num_threads(config.n_threads);
     #pragma omp parallel
@@ -653,22 +642,16 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
             IDType local_s_id = satellite_indices[s]; // index into positions_sorted
             if (config.tree_search) { // Returns local indices
                 double search_radius_3d = 0.0;
+                double los_margin = sel.V_vir_group * V_vir_max * (1.0 + total_redshifts[(size_t)local_s_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_s_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
                 if (!config.obs) {
                     if (config.dim == 6) {
                         search_radius_3d = d_T; // spherical in 6D
                     } else { 
-                        double los_margin = sel.V_vir_group * V_vir_max * (1.0 + total_redshifts[(size_t)local_s_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_s_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
-                        search_radius_3d = std::sqrt(d_T*d_T + los_margin*los_margin);
+                        search_radius_3d = los_margin;
                     }
                     cand = tree->kdtree_search((size_t)local_s_id, positions_sorted, BUFFER * search_radius_3d); // returns value from central_indices
                 } else {
-                    // if the data set is sufficiently large, default to brute force search in the near field to prevent a search radius that is too large
-                    if (positions_sorted[(size_t)local_s_id][0] < near_field_cutoff && N > NEAR_FIELD_GATE_N) {
-                        cand = bruteforce_search((size_t)local_s_id, positions_sorted, near_field_central_indices, BUFFER * near_field_Rmax, L, periodic, config.obs); // L is unused in obs mode
-                    } else { // since we are searching in RA/Dec space, just use something scaled by the distance of the maximum virial radius
-                        cand = tree->kdtree_search((size_t)local_s_id, cartesian_from_RA_Dec,
-                            BUFFER * sel.R_h_group * R_h_max * (OBS_PROJECTION_RADIUS / positions_sorted[local_s_id][0]));
-                    }
+                    cand = tree->kdtree_search((size_t)local_s_id, cartesian_from_RA_Dec, BUFFER * los_margin);
                 }
             } else { // Returns local indices
                 if (search_radius <= 0.0) {
@@ -855,16 +838,6 @@ void GroupFinder<D,V>::reassign_isolated(double search_radius, bool periodic, co
     IDType classified = IDType(0);
     double d_T = sel.R_h_iso * R_h_max; // max transverse distance the criterion allows
 
-    // only used in obs mode when tree search is enabled
-    std::vector<IDType> near_field_central_indices;
-    if (config.obs && config.tree_search && N > NEAR_FIELD_GATE_N) {
-        for (IDType idx : group_central_indices) {
-            if (positions_sorted[(size_t)idx][0] <= near_field_cutoff + BUFFER*near_field_Rmax) {
-                near_field_central_indices.push_back(idx);
-            }
-        }
-    }
-
     omp_set_num_threads(config.n_threads);
     #pragma omp parallel
     {
@@ -880,22 +853,16 @@ void GroupFinder<D,V>::reassign_isolated(double search_radius, bool periodic, co
             IDType local_i_id = isolated_central_indices[i];
             if (config.tree_search) {
                 double search_radius_3d = 0.0;
+                double los_margin = sel.V_vir_iso * V_vir_max * (1.0 + total_redshifts[(size_t)local_i_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_i_id], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
                 if (!config.obs) {
                     if (config.dim == 6) {
                         search_radius_3d = d_T; // spherical in 6D
                     } else { 
-                        double los_margin = sel.V_vir_iso * V_vir_max * (1.0 + total_redshifts[(size_t)local_i_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_i_id], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
-                        search_radius_3d = std::sqrt(d_T*d_T + los_margin*los_margin);
+                        search_radius_3d = los_margin;
                     }
                     cand = tree->kdtree_search((size_t)local_i_id, positions_sorted, BUFFER * search_radius_3d); // returns value from central_indices
                 } else {
-                    // if the data set is sufficiently large, default to brute force search in the near field to prevent a search radius that is too large
-                    if (positions_sorted[(size_t)local_i_id][0] < near_field_cutoff && N > NEAR_FIELD_GATE_N) {
-                        cand = bruteforce_search((size_t)local_i_id, positions_sorted, near_field_central_indices, BUFFER * near_field_Rmax, L, periodic, config.obs); // L is unused in obs mode
-                    } else { // since we are searching in RA/Dec space, just use something scaled by the distance of the maximum virial radius
-                        cand = tree->kdtree_search((size_t)local_i_id, cartesian_from_RA_Dec,
-                            BUFFER * sel.R_h_iso * R_h_max * (OBS_PROJECTION_RADIUS / positions_sorted[local_i_id][0]));
-                    }
+                    cand = tree->kdtree_search((size_t)local_i_id, cartesian_from_RA_Dec, BUFFER * los_margin);
                 }
             } else { // tree_search == false
                 if (search_radius <= 0.0) {
@@ -1222,15 +1189,7 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<FloatType>& masses_unsor
         }
         R_h_max = static_cast<double>(r_h_max_val);
         V_vir_max = static_cast<double>(v_vir_max_val);
-        // We need to define a near field boundary so that when projected onto a sphere of much larger radius, 
-        // searches around nearby galaxies don't return hundreds of millions of candidates.
-        // Below this value, we will default to a brute force search.
-        // Let's let this distance be 75 Mpc, which should also be comfortably above near_field_Rmax.
-        // Back-of-the-envelope suggests this could produce ~4 million candidates, while bruteforce inside this distance
-        // will involve about ~500,000 candidates. This should be OK...
-        near_field_cutoff = 75.0;
-        near_field_Rmax = V_vir_max * (std::max(sel.V_vir_iso, sel.V_vir_group) / 2.0) * ((1.0 + z_from_D(near_field_cutoff)) / Hubble(z_from_D(near_field_cutoff), H, OMEGA_M)); // motivated by maxmimum LOS radius due to the FoG effect at z ~ 0
-        std::cout << "Done calculating R_h_max: " << R_h_max << " Mpc, V_vir_max: " << V_vir_max << " km/s, near_field_Rmax: " << near_field_Rmax << " Mpc" << std::endl;
+        std::cout << "Done calculating R_h_max: " << R_h_max << " Mpc, V_vir_max: " << V_vir_max << " km/s" << std::endl;
     }
     mass_order.clear();
 }
@@ -1249,21 +1208,12 @@ GroupFinder<D,V>::classify(const double& search_radius, const double& scale, con
         } else {
             // Convert dec (1st index) and RA (2nd index) to cartesian coords and build tree from it
             for (size_t v = 0; v < N; ++v) {
-                Vec3 vec = {1., positions_sorted[v][1], positions_sorted[v][2]};
-                cartesian_from_RA_Dec[v] = celestial_to_cartesian(vec, OBS_PROJECTION_RADIUS);
+                Vec3 vec = {positions_sorted[v][0], positions_sorted[v][1], positions_sorted[v][2]};
+                cartesian_from_RA_Dec[v] = celestial_to_cartesian(vec);
             }
             tree = std::make_unique<AboriaNeighborBuilder>(cartesian_from_RA_Dec, local_ids, -L, L, periodic, config.leaf_size, config.n_threads, config.use_nanoflann);
         }
         std::cout << "Done building kd tree for initial classification." << std::endl;
-    }
-
-    std::vector<IDType> near_field_central_indices;
-    if (config.obs && config.tree_search && N > NEAR_FIELD_GATE_N) {
-        for (IDType idx : local_ids) { // recall that the zeroth index is always radius
-            if (positions_sorted[(size_t)idx][0] <= near_field_cutoff + BUFFER*near_field_Rmax) {
-                near_field_central_indices.push_back(idx);
-            }
-        }
     }
 
     group_label.assign(N, IDType(-1)); // -1 means unassigned
@@ -1278,21 +1228,16 @@ GroupFinder<D,V>::classify(const double& search_radius, const double& scale, con
         if (config.tree_search) { // Returns local indices
             double d_T = sel.R_h_group * halo_props[c].R_h; // max transverse distance the criterion allows
             double search_radius_3d = 0.0;
+            double los_margin = sel.V_vir_group * halo_props[c].V_vir * (1.0 + total_redshifts[c]) / (std::sqrt(2.0) * Hubble(total_redshifts[c], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
             if (!config.obs) {
                 if (config.dim == 6) {
                     search_radius_3d = d_T; // spherical in 6D
                 } else { 
-                    double los_margin = sel.V_vir_group * halo_props[c].V_vir * (1.0 + total_redshifts[c]) / (std::sqrt(2.0) * Hubble(total_redshifts[c], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
-                    search_radius_3d = std::sqrt(d_T*d_T + los_margin*los_margin);
+                    search_radius_3d = los_margin;
                 }
                 cand = tree->kdtree_search(c, positions_sorted, BUFFER * search_radius_3d); 
             } else {
-                // if the data set is sufficiently large, default to brute force search in the near field to prevent a search radius that is too large
-                if (N > NEAR_FIELD_GATE_N && positions_sorted[c][0] < near_field_cutoff) {
-                    cand = bruteforce_search(c, positions_sorted, near_field_central_indices, BUFFER * near_field_Rmax, L, periodic, config.obs); // L is unused in obs mode
-                } else { // since we are searching in RA/Dec space, just use something scaled by the distance of the maximum virial radius
-                    cand = tree->kdtree_search(c, cartesian_from_RA_Dec, BUFFER * sel.R_h_group * R_h_max * (OBS_PROJECTION_RADIUS / positions_sorted[c][0]));
-                }
+                cand = tree->kdtree_search(c, cartesian_from_RA_Dec, BUFFER * los_margin);
             }
         } else { // Returns local indices
             if (search_radius <= 0.0) {
