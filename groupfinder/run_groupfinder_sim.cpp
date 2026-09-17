@@ -113,6 +113,7 @@ int main(int argc, char* argv[]) {
     int leaf_size = config_json.value("leaf_size", 16);
     int n_threads = config_json.value("n_threads", 8);
     double search_radius = config_json.value("search_radius", -1.0);
+    double buffer = config_json.value("buffer", 1.01);
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -134,6 +135,7 @@ int main(int argc, char* argv[]) {
         leaf_size,
         static_cast<IDType>(chunk_size),
         n_threads,
+        buffer,
     };
 
     // Run for each input file

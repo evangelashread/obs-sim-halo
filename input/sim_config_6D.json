@@ -21,5 +21,9 @@
     "use_distance": true,
     "chunk": false,
     "chunk_size": 1000000,
-    "use_nanoflann": false
+    "use_nanoflann": false,
+    "checkpoint_path": "input/_checkpoint.bin",
+    "checkpoint_interval": 10,
+    "sorted_cache_prefix": "input/sorted_cache",
+    "buffer": 1.01
 }

@@ -42,11 +42,12 @@ groupfinder/run_groupfinder_obs
 groupfinder/run_groupfinder_sim
 #groupfinder/run_completeness_sim
 
-# Data files
-# CBOR input files are included in the repo
+# CBOR, binary, hdf5 and other large data files
 input/data/*.h5
 input/sim_groupfinder.py
 *.h5
+*.hdf5
+*.bin
 
 # Test outputs
 tests/*.h5

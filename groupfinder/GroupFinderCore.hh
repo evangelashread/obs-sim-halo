@@ -1,5 +1,6 @@
 #pragma once
 #include "Types.hh"
+#include "MappedArray.hh"
 #include <vector>
 #include <array>
 #include <functional>
@@ -60,7 +61,6 @@ inline constexpr double GF_G = 4.30091727e-9; // Mpc (km/s)^2 / Msun
 inline constexpr double GF_BOX_SIZE = 35000./GF_h/1000.; // Mpc, can be defined from config
 inline constexpr double GF_C = 299792.458; // km/s
 inline constexpr double GF_OMEGA_M = 0.3089;
-inline constexpr double BUFFER = 1.5;
 
 /* ################# Define distance methods ################ */
 struct DistPerp2D {
@@ -114,9 +114,10 @@ struct GroupFinderSettings {
     int leaf_size;
     IDType chunk_readout;
     int n_threads;
+    double BUFFER;
 };
 
-class AboriaNeighborBuilder; // Forward declare the kd tree builder class
+class NearestNeighborBuilder; // Forward declare the kd tree builder class
 
 template<class DistMethod, class VelMethod>
 class GroupFinder {
@@ -163,24 +164,33 @@ public:
 
     SelectionCriteria sel;  // selection criteria for groups and isolated centrals
     GroupFinderSettings config;
+
+    std::string checkpoint_path; // if empty, checkpointing disabled
+    size_t checkpoint_interval = 1000000; // centrals between periodic saves
+
+    void set_checkpointing(const std::string& path, size_t interval = 1000000) {
+        checkpoint_path = path;
+        checkpoint_interval = interval;
+    }
+
+    // Where the mmap-backed sorted arrays live on disk. If empty, falls back to a per-process /tmp scratch location
+    std::string sorted_cache_prefix;
+    void set_sorted_cache(const std::string& prefix) { sorted_cache_prefix = prefix; }
+
 private:
     double L, H, OMEGA_M;
     bool periodic;
-    double R_h_max; // computed once at runtime, only if configured with tree search and if dim = 3
-    double V_vir_max; // same as above
 
-    std::vector<IDType> groupcat_ids_sorted; // sorted groupcat ids
-    std::vector<FloatType> masses_sorted;  // sorted masses in log_10 solar masses
-    std::vector<Vec3> positions_sorted; // sorted 3D cartesian/spherical positions
-    std::vector<Vec3> cartesian_from_RA_Dec; // used for a tree search in obsevational (RA/dec) mode
-    std::vector<Vec3> velocities_sorted; // sorted 3D velocities
-    std::vector<FloatType> velocities_sorted_obs;
-    std::vector<Vec3> MWcoords;  // sorted minimal-image of each position relative to the MW position
+    MappedArray<IDType> groupcat_ids_sorted; // sorted groupcat ids
+    MappedArray<FloatType> masses_sorted;  // sorted masses in log_10 solar masses
+    MappedArray<Vec3> positions_sorted; // sorted 3D cartesian/spherical positions
+    MappedArray<Vec3> cartesian_from_RA_Dec; // used for a tree search in obsevational (RA/dec) mode
+    MappedArray<Vec3> velocities_sorted; // sorted 3D velocities
+    MappedArray<FloatType> velocities_sorted_obs;
+    MappedArray<Vec3> MWcoords;  // sorted minimal-image of each position relative to the MW position
     std::vector<IDType> group_label; // local group labels (central local index)
     std::vector<std::int8_t> classification; // 0 = group central, 1 = isolated central, 2 = satellite
-    std::vector<FloatType> total_redshifts;
-
-    std::vector<IDType> local_ids; // local indices [0, N-1] into sorted arrays
+    MappedArray<FloatType> total_redshifts;
 
     DistMethod dist_method; // desired method for computing relative distances
     VelMethod vel_method;  // desired method for computing relative velocities
@@ -205,13 +215,18 @@ private:
             const std::vector<IDType>& groupcat_ids,
             const std::vector<Vec3>& positions_unsorted,
             const std::vector<FloatType>& velocities_los);
+
+    bool load_checkpoint(int& phase_out, int& in_progress_phase_out, size_t& sub_progress_out);
+    void save_checkpoint(int phase, int in_progress_phase = 0, size_t sub_progress = 0) const;
     
-    std::unique_ptr<AboriaNeighborBuilder> tree;
-    std::vector<HaloProps> halo_props;
+    std::unique_ptr<NearestNeighborBuilder> tree;
+    MappedArray<HaloProps> halo_props;
 
-    void reassign_satellites(double search_radius, bool periodic, const double& scale);
+    void reassign_satellites(double search_radius, bool periodic, const double& scale, size_t resume_from = 0);
 
-    void reassign_isolated(double search_radius, bool periodic, const double& scale);
+    // Isolated-central reclassification, split into two phases
+    void reassign_isolated_phase_a(double search_radius, bool periodic, const double& scale, size_t resume_from = 0);
+    void reassign_isolated_phase_b(double search_radius, bool periodic, const double& scale, size_t resume_from = 0);
 
     std::array<double,2> density_contrast(IDType local_c_id, double trans_dist, double rel_vel);
 

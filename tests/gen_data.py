@@ -16,7 +16,8 @@ from astropy.cosmology import z_at_value
 from astropy import units as u
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-from groupfinder_interface import SimulationData, ObservationalData
+from colossus.halo import concentration, profile_nfw
+from scipy.stats import truncnorm
 
 cosmo = astropy.cosmology.Planck15
 
@@ -106,6 +107,12 @@ class GroupFinderTest:
         return logmstar - Mstar_log
     
     def halo_props(self, z, Mstar_log):
+        """
+        Returns:
+            M_h: halo virial mass [Msun]. Note: this is used interchangeably with 200c, which is technically not correct but the difference isn't too great.
+            R_h: halo radius (200c) in Mpc
+            V_vir: halo virial radius in km/s
+        """
         sol = fsolve(self.behroozi_SMHM, x0=3.0, args=(z, Mstar_log))[0]
         a = 1.0 / (1.0 + z)
         a1 = a - 1.0
@@ -151,54 +158,69 @@ class GroupFinderTest:
         if N == 0:
             return np.empty((0,3)), np.empty((0,)), np.empty((0,))
         z_c = z_at_value(cosmo.comoving_distance, np.linalg.norm(center_pos) * u.Mpc).value
-        _, R_h, v_vir = self.halo_props(z_c, log10_stellar_c)
-        
+        M_h, R_h, v_vir = self.halo_props(z_c, log10_stellar_c)
+        c_central = concentration.concentration(M_h*self.h, '200c', z_c, model = 'diemer19')
         # Generate N total satellites
         cos_t = np.random.uniform(-1., 1., N)
         theta = np.arccos(cos_t)
         phi = np.random.uniform(0., (2*np.pi)-1e-4, N)
         m = np.random.uniform(6.0, 8.5, N) # ensure satellite mass < central mass
-        
+
+        cos_t_v = np.random.uniform(-1., 1., N)
+        theta_v = np.arccos(cos_t_v)
+        phi_v = np.random.uniform(0., (2*np.pi)-1e-4, N)
+        sigma = v_vir / np.sqrt(2) 
+
         if N > 1:
             # Generate N-1 bound satellites + 1 isolated
             N_bound = N - 1
-            r = np.random.uniform(0.1*(self.R_h_group*R_h), 0.6*(self.R_h_group*R_h), N_bound)
+
+            v_mag = truncnorm.rvs(-1.0, 1.0, loc=0., scale=sigma, size=N_bound)
+
+            p_vals = np.random.uniform(0.01, 0.33, size=N_bound)
+            M_arr = np.full(N_bound, M_h * self.h)
+            c_arr = np.full(N_bound, c_central)
+            r = profile_nfw.radiusFromPdf(M_arr, c_arr, z_c, '200c', p_vals, interpolate=False) / (1000 * self.h)
+
             if sim:
                 v = np.zeros((N, 3))
                 for i in range(N_bound):
                     # Ensure velocity vector is 3D
-                    v_mag = np.random.uniform(0., 0.5 * self.V_vir_group * v_vir)
-                    vx = v_mag * np.sin(theta[i]) * np.cos(phi[i])
-                    vy = v_mag * np.sin(theta[i]) * np.sin(phi[i])
-                    vz = v_mag * np.cos(theta[i])
+                    # put on radial trajectories for simplicity
+                    vx = v_mag[i] * np.sin(theta[i]) * np.cos(phi[i])
+                    vy = v_mag[i] * np.sin(theta[i]) * np.sin(phi[i])
+                    vz = v_mag[i] * np.cos(theta[i])
                     v_i = np.array([vx, vy, vz])
                     v[i] = v_i + np.array([center_vlos[0], center_vlos[1], center_vlos[2]])
                 # Add isolated satellite, always as the last one
-                v_iso_mag = np.random.uniform(1.5*self.V_vir_group*v_vir, 2*self.V_vir_group*v_vir) * np.random.choice([-1, 1])
+                v_iso_mag = np.random.uniform(1.5*self.V_vir_iso*v_vir, 2*self.V_vir_iso*v_vir)
                 vx_iso = v_iso_mag * np.sin(theta[-1]) * np.cos(phi[-1])
                 vy_iso = v_iso_mag * np.sin(theta[-1]) * np.sin(phi[-1])
                 vz_iso = v_iso_mag * np.cos(theta[-1])
                 v_iso = np.array([vx_iso, vy_iso, vz_iso]) + np.array([center_vlos[0], center_vlos[1], center_vlos[2]])
                 v[-1] = v_iso  # Assign to the LAST satellite only
             else:
-                v = np.random.uniform(-0.5*self.V_vir_group*v_vir, 0.5*self.V_vir_group*v_vir, N_bound) + center_vlos
+                v = v_mag + center_vlos
                 # Add isolated satellite
-                v_iso = np.random.uniform(1.5*self.V_vir_group*v_vir, 2*self.V_vir_group*v_vir) * np.random.choice([-1, 1]) + center_vlos
+                v_iso = np.random.uniform(1.5*self.V_vir_iso*v_vir, 2*self.V_vir_iso*v_vir) + center_vlos
                 v = np.append(v, v_iso)
             r_iso = np.random.uniform(1.5*self.R_h_iso*R_h, 2*self.R_h_iso*R_h)
             r = np.append(r, r_iso)
             
         else:
             # Just one satellite, make it bound
-            r = np.random.uniform(0.1*self.R_h_group*R_h, 0.6*self.R_h_group*R_h, N)
+            v_mag = truncnorm.rvs(-1.0, 1.0, loc=0., scale=sigma, size=1)
+            p_vals = np.random.uniform(0.01, 0.33, size=1)
+            M_arr = np.full(1, M_h * self.h)
+            c_arr = np.full(1, c_central)
+            r = profile_nfw.radiusFromPdf(M_arr, c_arr, z_c, '200c', p_vals, interpolate=False) / (1000 * self.h)
             if sim:
-                v_mag = np.random.uniform(0, 0.5*self.V_vir_group*v_vir)
                 vx = v_mag * np.sin(theta[0]) * np.cos(phi[0])
                 vy = v_mag * np.sin(theta[0]) * np.sin(phi[0])
                 vz = v_mag * np.cos(theta[0])
-                v = (np.array([vx, vy, vz]) + np.array([center_vlos[0], center_vlos[1], center_vlos[2]])).reshape(1, 3)
+                v = (np.array([vx, vy, vz]) + np.array([center_vlos[0], center_vlos[1], center_vlos[2]]))
             else:
-                v = np.random.uniform(-0.5*self.V_vir_group*v_vir, 0.5*self.V_vir_group*v_vir, N) + center_vlos
+                v = v_mag + center_vlos
             
         rel = np.column_stack([r*np.sin(theta)*np.cos(phi), r*np.sin(theta)*np.sin(phi), r*np.cos(theta)])
         pos = rel + center_pos # cartesian satellite positions in unwrapped frame
@@ -228,7 +250,7 @@ class GroupFinderTest:
             v_cen = np.zeros(n_groups)
         radii = np.zeros(n_groups)
         vvirs = np.zeros(n_groups)
-        r_cen = np.random.uniform(0.2*radius, 0.8*radius, n_groups)
+        r_cen = np.random.uniform(0.1*radius, radius, n_groups)
         z_cen = z_at_value(cosmo.comoving_distance, r_cen * u.Mpc).value
         
         # Place groups equidistantly on a circle

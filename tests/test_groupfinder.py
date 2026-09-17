@@ -1,7 +1,7 @@
 """
 Run the observational and simulation density contrast configurations and the 6D
 simulation configurations N times to verify correctness of group finder implementation.
-For density contrast runs, require 96% pass rate due to the more probabilistic nature of
+For density contrast runs, require 96% pass rate due to the more random nature of
 group finding. The 6D case requires a 100% pass rate.
 """
 from gen_data import GroupFinderTest, check_results
@@ -62,6 +62,8 @@ class Tests:
         interface_sim.omega_M = 0.3089
         interface_sim.periodic = True
         interface_sim.box_size = 35000./interface_sim.h/1000.  # in Mpc
+        interface_sim.checkpoint_interval = 10
+        interface_sim.checkpoint_path = "input/_checkpoint.bin"
         interface_sim.config(os.path.join(parent_dir, "input/sim_config.json"), obs=False)
 
         for i in range(n_tests):
@@ -102,10 +104,12 @@ class Tests:
             interface.h = 0.6774
             interface.omega_M = 0.3089
             interface.search_radius = 40.0 # test bruteforce search radius
+            interface.checkpoint_interval = 10
+            interface.checkpoint_path = "input/_checkpoint.bin"
 
             # Generate observational test data
             test = GroupFinderTest(box_size=50.0, h=interface.h, omega_M=interface.omega_M)
-            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=6, n_sats=35)
+            test.create_test_data(type="obs", outfile=os.path.join(parent_dir, "input/data/obs_data.h5"), n_groups=6, n_sats=40)
 
             with h5py.File(os.path.join(parent_dir, "input/data/obs_data.h5"), "r") as f:
                 obs_positions = np.array(f['positions'][:]) # already in spherical coords (dist [Mpc], ra [rad], dec [rad])
@@ -183,6 +187,8 @@ class Tests:
         interface_sim6D.omega_M = 0.3089
         interface_sim6D.periodic = True
         interface_sim6D.box_size = 35000./interface_sim6D.h/1000.  # in Mpc
+        interface_sim6D.checkpoint_interval = 10
+        interface_sim6D.checkpoint_path = "input/_checkpoint.bin"
         interface_sim6D.config(os.path.join(parent_dir, "input/sim_config_6D.json"), obs=False)
 
         for i in range(n_tests):
@@ -228,6 +234,7 @@ class Tests:
             interface.chunk = True
             interface.chunk_size = 10
             interface.use_nanoflann = True
+            interface.checkpoint_path = ""
 
             # Generate observational test data
             test = GroupFinderTest(box_size=350.0, h=interface.h, omega_M=interface.omega_M)

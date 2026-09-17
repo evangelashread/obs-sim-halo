@@ -1,5 +1,6 @@
 #pragma once
 #include "Types.hh"
+#include "MappedArray.hh"
 #include <vector>
 #include <array>
 #include <cstdint>
@@ -16,7 +17,7 @@ class NeighborSearchBackend {
 public:
     virtual ~NeighborSearchBackend() = default;
     virtual std::vector<IDType> kdtree_search(size_t central_loc_id,
-                                               const std::vector<Vec3>& positions,
+                                               Vec3View positions,
                                                double search_radius) const = 0;
 };
 
@@ -25,15 +26,14 @@ class AboriaBackend : public NeighborSearchBackend {
     using Particles_t = Aboria::Particles<std::tuple<id>, 3, std::vector, Aboria::Kdtree>;
     Particles_t particles;
 public:
-    AboriaBackend(const std::vector<Vec3>& positions,
-                  const std::vector<IDType>& local_indices,
+    AboriaBackend(Vec3View positions,
                   double lower_bound, double box_size, bool periodic, int leaf_size)
         : particles(positions.size())
     {
         using position = Particles_t::position;
         for (size_t i = 0; i < positions.size(); ++i) {
             Aboria::get<position>(particles[i]) = Aboria::vdouble3(positions[i][0], positions[i][1], positions[i][2]);
-            Aboria::get<id>(particles[i]) = local_indices[i];
+            Aboria::get<id>(particles[i]) = static_cast<IDType>(i); // local index == particle's own position in the array
         }
         Aboria::vdouble3 min = Aboria::vdouble3::Constant(lower_bound);
         Aboria::vdouble3 max = Aboria::vdouble3::Constant(box_size);
@@ -42,7 +42,7 @@ public:
     }
 
     std::vector<IDType> kdtree_search(size_t central_loc_id,
-                                       const std::vector<Vec3>& positions,
+                                       Vec3View positions,
                                        double search_radius) const override {
         std::vector<IDType> candidates;
         if (central_loc_id >= positions.size()) return candidates;
@@ -57,8 +57,8 @@ public:
 
 // Use nanoflann, which is ideal for large data, but it has no periodic boundary support
 struct PointCloudAdaptor {
-    const std::vector<Vec3>& pts;
-    explicit PointCloudAdaptor(const std::vector<Vec3>& pts_) : pts(pts_) {}
+    Vec3View pts;
+    explicit PointCloudAdaptor(Vec3View pts_) : pts(pts_) {}
     inline size_t kdtree_get_point_count() const { return pts.size(); }
     inline double kdtree_get_pt(size_t idx, size_t dim) const { return pts[idx][dim]; }
     template <class BBOX>
@@ -72,20 +72,16 @@ using KDTreeType = nanoflann::KDTreeSingleIndexAdaptor<
 class NanoflannBackend : public NeighborSearchBackend {
     PointCloudAdaptor cloud;
     KDTreeType index;
-    std::vector<IDType> local_ids;
 public:
-    NanoflannBackend(const std::vector<Vec3>& positions,
-                      const std::vector<IDType>& local_indices, 
-                      int leaf_size, int n_threads)
+    NanoflannBackend(Vec3View positions, int leaf_size, int n_threads)
         : cloud(positions),
-          index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, n_threads)),
-          local_ids(local_indices)
+          index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None, n_threads))
     {
         index.buildIndex();
     }
 
     std::vector<IDType> kdtree_search(size_t central_loc_id,
-                                       const std::vector<Vec3>& positions,
+                                       Vec3View positions,
                                        double search_radius) const override {
         std::vector<IDType> candidates;
         if (central_loc_id >= positions.size()) return candidates;
@@ -97,17 +93,17 @@ public:
         double radius_arg = search_radius * search_radius; // since we have configured with L2
         index.radiusSearch(query_pt, radius_arg, matches, params);
         candidates.reserve(matches.size());
-        for (auto& m : matches) candidates.push_back(local_ids[m.first]);
+        // m.first is already the correct array index -- no lookup table needed
+        for (auto& m : matches) candidates.push_back(static_cast<IDType>(m.first));
         return candidates;
     }
 };
 
 // Default: use_nanoflann=false
-class AboriaNeighborBuilder {
+class NearestNeighborBuilder {
     std::unique_ptr<NeighborSearchBackend> backend;
 public:
-    AboriaNeighborBuilder(const std::vector<Vec3>& positions,
-                           const std::vector<IDType>& local_indices,
+    NearestNeighborBuilder(Vec3View positions,
                            double lower_bound, double box_size, bool periodic,
                            int leaf_size, int n_threads, bool use_nanoflann) {
         if (use_nanoflann && periodic) {
@@ -117,14 +113,14 @@ public:
                 "for periodic runs, or handle periodicity beforehand with ghost particles.");
         }
         if (use_nanoflann) {
-            backend = std::make_unique<NanoflannBackend>(positions, local_indices, leaf_size, n_threads);
+            backend = std::make_unique<NanoflannBackend>(positions, leaf_size, n_threads);
         } else {
-            backend = std::make_unique<AboriaBackend>(positions, local_indices, lower_bound, box_size, periodic, leaf_size);
+            backend = std::make_unique<AboriaBackend>(positions, lower_bound, box_size, periodic, leaf_size);
         }
     }
 
     std::vector<IDType> kdtree_search(size_t central_loc_id,
-                                       const std::vector<Vec3>& positions,
+                                       Vec3View positions,
                                        double search_radius) const {
         return backend->kdtree_search(central_loc_id, positions, search_radius);
     }

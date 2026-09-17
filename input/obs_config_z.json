@@ -14,12 +14,16 @@
     "box_size": 350.0,
     "search_radius": -1.0,
     "periodic": false,
-    "B_scaling": 0.15033878006348134,
+    "B_scaling": 0.14897206388108605,
     "h": 0.6774,
     "omega_M": 0.3089,
     "dim": 3,
     "use_distance": false,
     "chunk": true,
     "chunk_size": 10,
-    "use_nanoflann": true
+    "use_nanoflann": true,
+    "checkpoint_path": "",
+    "checkpoint_interval": 10000000,
+    "sorted_cache_prefix": "input/sorted_cache",
+    "buffer": 1.01
 }

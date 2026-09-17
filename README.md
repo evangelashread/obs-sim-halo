@@ -18,7 +18,7 @@ This can handle survey or simulation data out to any redshift. Flat lambdaCDM is
 
 This group finder can classify groups in simulated catalogs in a way that mimics observations. To do this, it reduces six-dimensional simulation data (3D position + 3D velocity) to three dimensions (RA-like, Dec-like, and line-of-sight velocity/distance/redshift). A reference position (such as a Milky Way analogue) can be specified to anchor the coordinate system if different from (0,0,0).
 
-When using the density-contrast method, it's recommended to scale the parameter "B" if the galaxy population is known to be incomplete. In the examples, "B" is set to the ratio of observed to simulated galaxy number densities at a given mass/luminosity limit.
+When using the density-contrast method, it's recommended to scale the parameter "B" if the galaxy population is known to be incomplete (and particularly if the selection function is unknown). In the examples, "B" is set to the ratio of observed to simulated galaxy number densities at a given mass/luminosity limit. This can (should) be made redshift-dependent for redshift surveys.
 
 ## Dependencies
 
@@ -184,3 +184,5 @@ Contributions are welcome — please open an issue or pull request.
 ## Citation
 
 If you use this code in your research, please cite [Shread et al. 2026](https://doi.org/10.3847/1538-4357/ae644c) as well as [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) and [Behroozi et al. 2019](https://doi.org/10.1093/mnras/stz1182).
+
+**NOTE**: There's a couple typos in the Appendix of [Shread et al. 2026](https://doi.org/10.3847/1538-4357/ae644c): the selection logic is as written in this code base. Namely, Eq. A24 should be P >= f_C B, not P >= 1/3 f_C B.

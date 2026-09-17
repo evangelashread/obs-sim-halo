@@ -168,9 +168,13 @@ class GroupFinderInterface:
         self.omega_M = 0.3089 # Matter density at z=0
         self.use_distance = True
         self.chunk = False
-        self.chunk_size = 1_000_000
+        self.chunk_size = 1000000
         self.use_nanoflann = False
         self.search_radius = -1.0 # max radius for brute force search. Not used if <=0 Mpc
+        self.checkpoint_path = "input/checkpoint.bin" # if empty, checkpointing is disabled
+        self.checkpoint_interval = 10000000
+        self.sorted_cache_prefix = "input/sorted_cache" # where mem mapped files live
+        self.buffer = 1.01 # optional float value to scale search radius 
     def config(self, filename: str, obs=False):
         # write values to json file
         with open(filename, 'w') as f:
@@ -198,6 +202,10 @@ class GroupFinderInterface:
                 "chunk": self.chunk,
                 "chunk_size": self.chunk_size,
                 "use_nanoflann": self.use_nanoflann,
+                "checkpoint_path": self.checkpoint_path,
+                "checkpoint_interval": self.checkpoint_interval,
+                "sorted_cache_prefix": self.sorted_cache_prefix,
+                "buffer" : self.buffer,
             }, f, indent=4)
 
     def calculate_B(self, sim_data: SimulationData, obs_data: ObservationalData, mass_limit: float, R_sim: float, R_obs: float, cubic: bool = True) -> None:

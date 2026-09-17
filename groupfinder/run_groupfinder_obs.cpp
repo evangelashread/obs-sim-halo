@@ -105,6 +105,10 @@ int main(int argc, char* argv[]) {
     bool use_nanoflann = config_json.value("use_nanoflann", false);
     int leaf_size = config_json.value("leaf_size", 16);
     int n_threads = config_json.value("n_threads", 8);
+    double buffer = config_json.value("buffer", 1.01);
+    std::string checkpoint_path = config_json.value("checkpoint_path", std::string(""));
+    size_t checkpoint_interval = config_json.value("checkpoint_interval", (size_t)50000000);
+    std::string sorted_cache_prefix = config_json.value("sorted_cache_prefix", std::string(""));
     
     SelectionCriteria sel{
         R_h_group_val,
@@ -126,6 +130,7 @@ int main(int argc, char* argv[]) {
         leaf_size,
         static_cast<IDType>(chunk_size),
         n_threads,
+        buffer,
     };
 
     GroupsResult groups_result;
@@ -135,6 +140,8 @@ int main(int argc, char* argv[]) {
     // Run group finder
     if (use_distance) {
         GroupFinder<DistObs, VelObs> finder(sel, config, box_size, h_val*100., omega_M, periodic);
+        finder.set_checkpointing(checkpoint_path, checkpoint_interval);
+        finder.set_sorted_cache(sorted_cache_prefix);
         finder.set_conc_table(conc_data.halo_masses, conc_data.redshifts, conc_data.concentration);
         finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
         finder.set_smhm_table(smhm_data.log_mstar, smhm_data.redshifts, smhm_data.log_Mh);
@@ -155,6 +162,8 @@ int main(int argc, char* argv[]) {
 
     } else { // the zeroth column in positions is assumed to be redshifts
         GroupFinder<DistObs, VelTotal> finder(sel, config, box_size, h_val*100., omega_M, periodic);
+        finder.set_checkpointing(checkpoint_path, checkpoint_interval);
+        finder.set_sorted_cache(sorted_cache_prefix);
         finder.set_conc_table(conc_data.halo_masses, conc_data.redshifts, conc_data.concentration);
         finder.set_z_dist_table(z_dist_data.redshifts, z_dist_data.distances);
         finder.set_smhm_table(smhm_data.log_mstar, smhm_data.redshifts, smhm_data.log_Mh);

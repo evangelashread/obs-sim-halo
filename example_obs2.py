@@ -138,6 +138,7 @@ interface.iso_reclass = True
 interface.use_distance = False
 interface.tree_search = True
 interface.use_nanoflann = True
+interface.checkpoint_interval = 5
 interface.config("input/lightcone_config.json", obs=True)
 
 # Run halo concentration data generation
@@ -152,4 +153,4 @@ InterpolationData.generate_smhm_inverse_data(max_z = 0.03)
 run_groupfinder('obs', 'input/data/lightcone_data.h5', 'lightcone_gf_result.h5', 'input/lightcone_config.json')
 
 check_results('input/data/sim_data.h5', 'lightcone_gf_result.h5')
-#plot_groups('input/data/sim_data.h5', 'lightcone_gf_result.h5', 'sim')
+plot_groups('input/data/sim_data.h5', 'lightcone_gf_result.h5', 'sim')

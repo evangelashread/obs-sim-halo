@@ -1,11 +1,12 @@
 #include "GroupFinderCore.hh"
 #include "Types.hh"
+#include "MappedArray.hh"
 #include <cmath>
 #include <algorithm>
 
 namespace gf {
 
-inline std::vector<IDType> bruteforce_search(size_t central_id, const std::vector<Vec3>& all_positions,
+inline std::vector<IDType> bruteforce_search(size_t central_id, Vec3View all_positions,
                                          const std::vector<IDType>& cand_ids, double R_max, 
                                          double L, bool periodic = true, bool obs = false){
     /* 
