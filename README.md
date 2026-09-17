@@ -185,4 +185,4 @@ Contributions are welcome — please open an issue or pull request.
 
 If you use this code in your research, please cite [Shread et al. 2026](https://doi.org/10.3847/1538-4357/ae644c) as well as [Yang et al. 2005](https://doi.org/10.1111/j.1365-2966.2005.08560.x) and [Behroozi et al. 2019](https://doi.org/10.1093/mnras/stz1182).
 
-**NOTE**: There's a typo in the Appendix of [Shread et al. 2026](https://doi.org/10.3847/1538-4357/ae644c): the selection logic is as written in this code base, which lives primarily in GroupFinderCore.cpp. Specifically, the Part 1 criterion (Eq. A24) and Part 2 criterion should read P >= f_C B, not P >= 1/3 f_C B.
+**NOTE**: There's a typo in the Appendix of [Shread et al. 2026](https://doi.org/10.3847/1538-4357/ae644c): the selection logic is as written in this code base, which lives primarily in GroupFinderCore.cpp. Specifically, the Part 1 criterion (Eq. A24) and Part 2 criterion should read P >= f_C B, not P >= 1/3 f_C B. All galaxies within 1 halo radius and 3 times the virial velocity of a given halo are eligible satellites by the nature of the search algorithm, but only those with P_M >= f_C B become satellites.
