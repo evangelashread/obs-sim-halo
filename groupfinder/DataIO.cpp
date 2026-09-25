@@ -59,7 +59,7 @@ void HDF5Handler::writeDataset1D(
     dataset.write(data.data(), predType);
 }
 
-// Read jagged 1D array (vector<vector<T>>)
+// Read jagged 1D array (vector<vector<T>>) using variable length memory type
 // e.g. masses in run_completeness_sim.cpp
 template<typename T>
 std::vector<std::vector<T>> HDF5Handler::readJagged1D(
@@ -81,7 +81,6 @@ std::vector<std::vector<T>> HDF5Handler::readJagged1D(
         std::memcpy(result[i].data(), vl_data[i].p, vl_data[i].len * sizeof(T));
     }
     
-    // Free variable-length memory
     dataset.vlenReclaim(vl_data.data(), vl_type, dataspace);
     return result;
 }
@@ -96,12 +95,10 @@ std::vector<std::vector<std::array<T, N>>> HDF5Handler::readJagged2D(
     hsize_t dims[1];
     dataspace.getSimpleExtentDims(dims, nullptr);
     
-    // Create array type and variable-length wrapper
     hsize_t array_dims[1] = {N};
     H5::ArrayType array_type(predType, 1, array_dims);
     H5::VarLenType vl_type(&array_type);
     
-    // Read variable-length data
     std::vector<hvl_t> vl_data(dims[0]);
     dataset.read(vl_data.data(), vl_type);
     
@@ -138,8 +135,7 @@ void HDF5Handler::writeJagged1D(
     }
     dataset.write(vl_data.data(), vl_type);
     // Add metadata attribute to keep track of outer vector size
-    H5::Attribute attr = dataset.createAttribute("outer_size", H5::PredType::NATIVE_UINT64, 
-                                                  H5::DataSpace(H5S_SCALAR));
+    H5::Attribute attr = dataset.createAttribute("outer_size", H5::PredType::NATIVE_UINT64, H5::DataSpace(H5S_SCALAR));
     uint64_t outer_size = data.size();
     attr.write(H5::PredType::NATIVE_UINT64, &outer_size);
 }
@@ -367,7 +363,7 @@ void HDF5Handler::writeResults(
     try {
         H5::H5File file(filename, H5F_ACC_TRUNC);
         
-        // Create root group for group member id results, halo masses, etc
+        // root group for group member id results, halo masses, etc
         H5::Group results_group(file.createGroup("/results"));
 
         writeDataset1D(results_group, "central_ids", results.central_ids, HDF5IntType<IDType>::value(), chunk, chunk_size);
@@ -375,10 +371,10 @@ void HDF5Handler::writeResults(
         writeDataset1D(results_group, "group_member_ids", results.group_member_ids, HDF5IntType<IDType>::value(), chunk, chunk_size);
         writeDataset1D(results_group, "group_member_offsets", results.group_member_offsets, HDF5IntType<IDType>::value(), chunk, chunk_size);
 
-        // Create configuration group
+        // configuration group
         H5::Group config_group(file.createGroup("/configuration"));
 
-        // Make selection criteria dataset
+        // selection criteria dataset
         {
             double sel_data[] = {config.R_h_group, config.V_vir_group, config.R_h_iso, config.V_vir_iso};
             hsize_t dims[1] = {4};

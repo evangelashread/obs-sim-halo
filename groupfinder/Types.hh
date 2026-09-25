@@ -7,7 +7,7 @@
 // both float AND int (IDs, positions, velocities, masses, halo properties, etc.) 
 // across both the group finder core and the HDF5 I/O layer.
 
-// Only ever need to change these two lines
+// Only ever need to change these two lines... but we should make these configurable at a higher level
 using FloatType = float;
 using IDType = std::int64_t;
 using Vec3 = std::array<FloatType,3>;

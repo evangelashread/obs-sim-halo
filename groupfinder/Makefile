@@ -11,8 +11,8 @@ HDF5_LDFLAGS := -L/opt/homebrew/opt/hdf5/lib -lhdf5_cpp -lhdf5
 OMP_CXXFLAGS := -I/opt/homebrew/opt/libomp/include -Xpreprocessor -fopenmp
 OMP_LDFLAGS := -L/opt/homebrew/opt/libomp/lib -lomp
 
-# Nothing here and below should ever need to be changed
-CXXFLAGS := -I$(ABORIA_DIR) -I$(INC_DIR) $(OMP_CXXFLAGS) -O2 -std=c++17 -march=armv8.5-a -Wall -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
+# Nothing here and below should ever need to be changed, except for the one OS specific flag
+CXXFLAGS := -I$(ABORIA_DIR) -I$(INC_DIR) $(OMP_CXXFLAGS) -O3 -std=c++17 -march=armv8.5-a -Wall -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
 
 SOURCES := GroupFinderCore.cpp GroupFinderStatistics.cpp DataIO.cpp
 BUILD_DIR := build

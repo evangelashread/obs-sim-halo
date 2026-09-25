@@ -37,9 +37,7 @@ struct SimInputData {
     std::vector<std::array<FloatType, 3>> velocities;
 };
 
-/**
- * @brief Mass-concentration data for interpolation
- */
+/**  @brief Mass-concentration data for interpolation */
 struct ConcentrationData {
     std::vector<double> halo_masses;
     std::vector<double> redshifts;
@@ -96,9 +94,7 @@ struct GroupFinderStatistics {
     std::int64_t group_count; // total number of galaxies in groups (non-isolated)
 };
 
-/**
- * @brief Data I/O class
- */
+/** @brief Data I/O class */
 class HDF5Handler {
 public:
     /**

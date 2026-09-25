@@ -117,7 +117,7 @@ struct GroupFinderSettings {
     double BUFFER;
 };
 
-class NearestNeighborBuilder; // Forward declare the kd tree builder class
+class NearestNeighborBuilder;
 
 template<class DistMethod, class VelMethod>
 class GroupFinder {
@@ -174,6 +174,7 @@ public:
     }
 
     // Where the mmap-backed sorted arrays live on disk. If empty, falls back to a per-process /tmp scratch location
+    // i.e. mem mapping isn't an option here (but it would be worth making it an option at some point)
     std::string sorted_cache_prefix;
     void set_sorted_cache(const std::string& prefix) { sorted_cache_prefix = prefix; }
 

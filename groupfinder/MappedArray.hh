@@ -13,9 +13,9 @@
 namespace gf {
 
 // Memory map arrays of type T to a flat file
-//   - create(path, n): make a new n-element file, mapped read-write so we can fill it in. 
+// create(path, n): make a new n-element file, mapped read-write so we can fill it in. 
 //      Call finalize_read_only() once done writing.
-//   - open_existing(path, n): reopen a previously-written file of exactly n elements, mapped read-only. 
+// open_existing(path, n): reopen a previously-written file of exactly n elements, mapped read-only. 
 //      Used to skip recomputing stuff on a resumed run.
 template<class T>
 class MappedArray {
@@ -108,8 +108,7 @@ private:
     size_t bytes_ = 0;
 };
 
-// Needed so that kdtree_search (virtual -- can't be templated) can accept either a
-// std::vector<Vec3> or a MappedArray<Vec3>
+// Needed so that kdtree_search can accept either a std::vector<Vec3> or a MappedArray<Vec3>
 struct Vec3View {
     const Vec3* ptr = nullptr;
     size_t n = 0;

@@ -11,7 +11,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from tests.gen_data import GroupFinderTest
 
-# Adjust as needed
+# Adjust as needed (sorry)
 cosmology.setCosmology('planck15')
 colossus_cosmo = cosmology.getCurrent()
 astropy_cosmo = astropy.cosmology.Planck15
@@ -128,11 +128,8 @@ def generate_smhm_inverse_data(min_z=0.0, max_z=0.35, zstep=0.01,
         row = np.full(len(logMstar_vals), np.nan)
         for im, logMstar in enumerate(logMstar_vals):
             M_h, _, _ = test.halo_props(z, logMstar)
-            if np.isfinite(M_h) and M_h > 0:
+            if np.isfinite(M_h) and M_h > 0: # halo mass is unphysical, so use the nearest Mhalo at this redshift that's valid
                 row[im] = np.log10(M_h)
-            else:
-                print(f"For log Mstar = {logMstar} at z = {z}, the calculated Mhalo is unphysical. /"
-                      "We will use the next nearest Mhalo value at this redshift that is valid.")
         valid = np.isfinite(row)
         if valid.any() and not valid.all():
             row[~valid] = np.interp(logMstar_vals[~valid], logMstar_vals[valid], row[valid])

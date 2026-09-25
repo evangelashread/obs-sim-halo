@@ -68,7 +68,7 @@ static double behroozi_SMHM(double z, const double& x, double current_Mstar, con
     /**
      * @brief Helper for the iterative solver find_Mh. Returns the difference between log Mstar calculated 
      * from the Behroozi et al. 2019 SMHM relation, and the current log Mstar for a given log Mpeak/M1 (x) 
-     * and redshift (z).
+     * and redshift (z). For full generality should make this generalizable to any SHMR...
      */
     
     double a = 1.0 / (1.0 + z);
@@ -144,7 +144,7 @@ static inline double bilinear_interp(double x, double y,
     
     size_t j = i + 1;
     size_t l = k + 1;
-    // control for undefined behavior
+    // don't want numeric slop if the interval's too small
     const double eps = 1e-15;
     double dx = x_arr[j] - x_arr[i];
     double dy = y_arr[l] - y_arr[k];
@@ -161,7 +161,7 @@ static double find_Mh(const double& z, double x0, double x1, double current_mass
                       const BehrooziParams& params, double tolerance = 1e-9, int max_iter = 100) {
     /**
      * @brief Secant root-finding method for inverting Behroozi SMHM relation
-     * Returns 
+     * NOT CURRENTLY USED (ignore warning generation)
      */
     double f_x0 = behroozi_SMHM(z, x0, current_mass, params);
     double f_x1 = behroozi_SMHM(z, x1, current_mass, params);
@@ -278,7 +278,7 @@ bool GroupFinder<D,V>::load_checkpoint(int& phase_out, int& in_progress_phase_ou
     sub_progress_out = 0;
     if (checkpoint_path.empty()) return false;
     std::ifstream in(checkpoint_path, std::ios::binary);
-    if (!in) return false; // no checkpoint yet. fresh start, not an error
+    if (!in) return false; // no checkpoint yet
 
     uint32_t magic = 0, version = 0;
     int32_t phase32 = 0, in_progress32 = 0;
@@ -290,9 +290,9 @@ bool GroupFinder<D,V>::load_checkpoint(int& phase_out, int& in_progress_phase_ou
         std::cerr << "Warning: checkpoint file unreadable/corrupt; starting fresh." << std::endl;
         return false;
     }
-    if (version != 3) {
-        std::cerr << "Warning: checkpoint file is an older/incompatible format (version " << version
-                   << "); starting fresh. Delete " << checkpoint_path << " to silence this." << std::endl;
+    if (version != 3) { // just in case there's previoous versions of this floating around still
+        std::cerr << "Warning: checkpoint file is an older/incompatible format (version " << version 
+                << "); starting fresh. Delete " << checkpoint_path << " to silence this." << std::endl;
         return false;
     }
     in.read(reinterpret_cast<char*>(&phase32), sizeof(phase32));
@@ -423,7 +423,7 @@ double DistObs::operator()(const double& RA_cen, const double& Dec_cen,
     if (dRA > M_PI) dRA -= 2.0*M_PI;
     if (dRA < -M_PI) dRA += 2.0*M_PI;
 
-    // Obtain the haversine of theta
+    // haversine of theta
     double h = std::sin(0.5*dDec)*std::sin(0.5*dDec) + std::cos(Dec_cen)*std::cos(Dec_sat)*std::sin(0.5*dRA)*std::sin(0.5*dRA);
 
     // Clamp to [0, 1]
@@ -882,7 +882,7 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
         } // end of for loop through this chunk's satellites
         } // end of parallel region; safe to checkpoint
 
-        // phase=1 (initial classification is the last FULLY completed phase boundary); in_progress_phase=2, sub_progress=chunk_end.
+        // phase=1 (initial classification is the last FULLY completed phase boundary); in_progress_phase=2, sub_progress=chunk_end
         save_checkpoint(1, 2, chunk_end);
     }
     std::cout << " " << std::endl;
@@ -918,8 +918,8 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
 template<class D,class V>
 void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool periodic, const double& scale, size_t resume_from) {
     /** @brief Isolated-central reclassification, PHASE A.
-        Group centrals (already sorted in descending mass order by construction of `initialize`/`initialize_obs`)
-        can claim nearby isolated centrals directly as satellites ("class 3")
+        Group centrals (already sorted in descending mass order by construction of initialize/initialize_obs)
+        can take nearby isolated centrals directly as satellites ("class 3")
     */
     std::vector<IDType> group_central_indices;
     std::vector<Vec3> group_central_positions;
@@ -951,7 +951,7 @@ void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool peri
     size_t N = group_central_indices.size();
     int reclassified = 0;
 
-    if (resume_from > N) resume_from = 0; // defensive: stale/mismatched checkpoint -- don't skip past the end
+    if (resume_from > N) resume_from = 0; // stale/mismatched checkpoint
     IDType classified = static_cast<IDType>(resume_from);
     const size_t chunk_size = (checkpoint_interval > 0) ? checkpoint_interval : N;
 
@@ -1015,7 +1015,7 @@ void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool peri
             }
         } // end of for loop through this chunk's isolated centrals
 
-        // phase=2 (satellite reclassification is the last FULLY completed phase boundary); in_progress_phase=3, sub_progress=chunk_end.
+        // phase=2 (satellite reclassification is the last FULLY completed phase boundary); in_progress_phase=3, sub_progress=chunk_end
         save_checkpoint(2, 3, chunk_end);
     }
     std::cout << " " << std::endl;
@@ -1026,7 +1026,7 @@ void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool peri
 template<class D,class V>
 void GroupFinder<D,V>::reassign_isolated_phase_b(double search_radius, bool periodic, const double& scale, size_t resume_from) {
     /** @brief Isolated-central reclassification, PHASE B.
-        Galaxies claimed in phase A ("class 3") are re-evaluated against the full group central population.
+        Galaxies filtered in phase A ("class 3") are re-evaluated against the full group central population.
         Same parallel structure as reassign_satellites.
      */
     assert(classification.size() == positions_sorted.size());
@@ -1057,7 +1057,7 @@ void GroupFinder<D,V>::reassign_isolated_phase_b(double search_radius, bool peri
     int reclassified = 0;
     size_t N = class3_indices.size();
 
-    if (resume_from > N) resume_from = 0; // stale or mismatched checkpoint -- don't skip past the end
+    if (resume_from > N) resume_from = 0; // stale or mismatched checkpoint
     IDType classified = static_cast<IDType>(resume_from);
     const size_t chunk_size = (checkpoint_interval > 0) ? checkpoint_interval : N;
 
@@ -1329,7 +1329,7 @@ void GroupFinder<D,V>::initialize(const std::vector<FloatType>& masses_unsorted,
     
     mass_order.clear();
 
-    // Flush + drop write access: from here on these are clean, file-backed pages the kernel can discard under memory pressure instead of swapping
+    // now these are read only from file, which is good if swap memory is a problem
     masses_sorted.finalize_read_only();
     total_redshifts.finalize_read_only();
     groupcat_ids_sorted.finalize_read_only();
@@ -1404,8 +1404,7 @@ void GroupFinder<D,V>::initialize_obs(const std::vector<FloatType>& masses_unsor
     }
     mass_order.clear();
 
-    // Flush + drop write access. cartesian_from_RA_Dec is deliberately left out here (and out of finalize_read_only): 
-    // classify() rewrites its contents on every call, so it must stay writable.
+    // make these read only to mitigate swap memory issues since they don't get modified again
     masses_sorted.finalize_read_only();
     groupcat_ids_sorted.finalize_read_only();
     positions_sorted.finalize_read_only();
@@ -1429,7 +1428,7 @@ GroupFinder<D,V>::classify(const double& search_radius, const double& scale, con
     }
 
     // If kdtree, initialize the NearestNeighborBuilder class
-    // Rebuild the tree upon every call to the class
+    // Rebuild the tree upon every call to the class (fine for now because this is <10 min build even at billion scale...but should prob cache these at some point)
     if (config.tree_search) {
         if (!config.obs) {
             tree = std::make_unique<NearestNeighborBuilder>(positions_sorted, 0.0, L, periodic, config.leaf_size, config.n_threads, config.use_nanoflann);
@@ -1656,7 +1655,7 @@ GroupFinder<D,V>::classify(const double& search_radius, const double& scale, con
     }
     std::cout << "Done preparing final group indices, central indices, and halo mass vectors." << std::endl;
     if (!checkpoint_path.empty()) {
-        std::remove(checkpoint_path.c_str()); // run finished successfully. clear it so a future unrelated run never resumes a stale state
+        std::remove(checkpoint_path.c_str()); // run finished successfully. delete so a future unrelated run never resumes a stale state
     }
     return std::make_tuple(std::move(res), std::move(central_global_indices), std::move(halo_masses_final));
 }

@@ -1,8 +1,6 @@
 """
 Module to generate test data for GroupFinder unit tests.
 The last satellite associated with each group is always an isolated galaxy.
-
-Note: Future versions will include more tests, particularly for edge cases.
 """
 
 import numpy as np
@@ -285,7 +283,7 @@ class GroupFinderTest:
         
     def build_obs_catalog(self, n_groups=3, n_sats=20, redshift=False):
         """
-        Build a data structure matching the observational GroupFinder input schema:
+        Build a data structure matching the observational GroupFinder input :
         positions: list[[dist, dec, ra]] in Mpc, degrees or (redshift, degrees)
         velocities: list[v_los] in km/s (written to [0.] if in redshift mode)
         masses: list[log10 M*]
@@ -333,7 +331,7 @@ class GroupFinderTest:
 
             group_indices.append(group)
 
-        # Integrity: central mass > satellite mass
+        # central mass > satellite mass
         for group in group_indices:
             if len(group) > 1:
                 cm = all_masses[group[0]]
