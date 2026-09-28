@@ -8,7 +8,6 @@
 #include <numeric>
 #include <algorithm>
 #include <iostream>
-#include <unordered_map>
 #include <limits>
 #include <memory>
 #include <type_traits>
@@ -326,24 +325,27 @@ bool GroupFinder<D,V>::load_checkpoint(int& phase_out, int& in_progress_phase_ou
     return true;
 }
 
-void summarize(const std::string& label, const std::vector<IDType>& group_label) {
-    std::unordered_map<IDType,IDType> group_sizes;
+static std::vector<uint32_t> label_sizes(const std::vector<IDType>& group_label) {
+    /* Build vector indexed by local indices N (size of all galaxies). Elements are the number of galaxies with that group label. 
+    0 if it's not a central, 1 if it's an isolated central, and >1 if it's a multi-member group. */
+    std::vector<uint32_t> sizes(group_label.size(), 0);
     for (size_t i = 0; i < group_label.size(); ++i) {
         IDType g = group_label[i];
-        if (g == -1) {
+        if (g == IDType(-1)) {
             std::cerr << "Error: galaxy " << i << " is unassigned to any group." << std::endl;
             std::abort();
-        } else { // Count the number of members in each group (all have same group label as central)
-            ++group_sizes[g];
         }
+        ++sizes[(size_t)g]; // Count the number of members in each group (all have same group label as central)
     }
-    size_t n_groups = group_sizes.size();
-    size_t n_single = 0;
-    for (auto &kv: group_sizes) if (kv.second==1) ++n_single;
-    std::cout << label << ": groups=" << n_groups
-              << " single=" << n_single
-              << " multi=" << (n_groups - n_single) << std::endl;
-};
+    return sizes;
+}
+
+void summarize(const std::string& label, const std::vector<IDType>& group_label) {
+    auto sizes = label_sizes(group_label);
+    size_t n_groups = 0, n_single = 0;
+    for (uint32_t s : sizes) if (s) { ++n_groups; if (s == 1) ++n_single; }
+    std::cout << label << ": groups=" << n_groups << " single=" << n_single << " multi=" << (n_groups - n_single) << std::endl;
+}
 
 /* ################# Define distance methods ################ */
 
@@ -699,19 +701,12 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
         else if (classification[i] == 2) ++n_satellite;
     }
     std::vector<IDType> central_indices; // indices into positions_sorted
-    std::vector<Vec3> central_positions;
     std::vector<IDType> satellite_indices; // indices into positions_sorted
     central_indices.reserve(n_central);
-    central_positions.reserve(n_central);
     satellite_indices.reserve(n_satellite);
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0 || classification[i] == 1) { // 0 = group central, 1 = isolated central
             central_indices.push_back((IDType)i);
-            if (config.tree_search && config.obs) { 
-                central_positions.push_back(cartesian_from_RA_Dec[i]); 
-            } else {
-                central_positions.push_back(positions_sorted[i]);
-            }
         } else if (classification[i] == 2) {
             satellite_indices.push_back((IDType)i);
         } else {
@@ -887,18 +882,9 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
     }
     std::cout << " " << std::endl;
 
-    std::unordered_map<IDType,int> group_sizes;
-    group_sizes.reserve(central_indices.size());
+    auto group_sizes = label_sizes(group_label);
     for (size_t i = 0; i < group_label.size(); ++i) {
-        IDType g = group_label[i];
-        if (g == IDType(-1)) {
-            std::cerr << "Error: galaxy " << i << " is unassigned to any group." << std::endl;
-            std::abort();
-        } else ++group_sizes[g];
-    }
-    for (size_t i = 0; i < group_label.size(); ++i) {
-        IDType g = group_label[i];
-        int sz = group_sizes[g];
+        uint32_t sz = group_sizes[(size_t)group_label[i]];
         if (sz == 1) {
             if (classification[i] == 2) {
                 std::cerr << "Error: Satellite assigned to a group of size 1 found. This should not happen." << std::endl;
@@ -922,7 +908,6 @@ void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool peri
         can take nearby isolated centrals directly as satellites ("class 3")
     */
     std::vector<IDType> group_central_indices;
-    std::vector<Vec3> group_central_positions;
     std::vector<IDType> isolated_central_indices;
     assert(classification.size() == positions_sorted.size());
 
@@ -932,17 +917,11 @@ void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool peri
         else if (classification[i] == 1) ++n_isolated;
     }
     group_central_indices.reserve(n_group_central);
-    group_central_positions.reserve(n_group_central);
     isolated_central_indices.reserve(n_isolated);
 
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0) { // 0 = group central
             group_central_indices.push_back(i);
-            if (config.tree_search && config.obs) {
-                group_central_positions.push_back(cartesian_from_RA_Dec[i]);
-            } else {
-                group_central_positions.push_back(positions_sorted[i]);
-            }
         } else if (classification[i] == 1) { // 1 = isolated central
             isolated_central_indices.push_back(i);
         }
@@ -1036,19 +1015,12 @@ void GroupFinder<D,V>::reassign_isolated_phase_b(double search_radius, bool peri
         else if (classification[i] == 3) ++n_class3;
     }
     std::vector<IDType> central_indices; // indices into positions_sorted
-    std::vector<Vec3> central_positions;
     std::vector<IDType> class3_indices; // indices into positions_sorted
     central_indices.reserve(n_central);
-    central_positions.reserve(n_central);
     class3_indices.reserve(n_class3);
     for (size_t i = 0; i < classification.size(); ++i) {
         if (classification[i] == 0) { // 0 = group central
             central_indices.push_back((IDType)i);
-            if (config.tree_search && config.obs) { 
-                central_positions.push_back(cartesian_from_RA_Dec[i]); 
-            } else {
-                central_positions.push_back(positions_sorted[i]);
-            }
         } else if (classification[i] == 3) {
             class3_indices.push_back((IDType)i);
         }
@@ -1223,18 +1195,9 @@ void GroupFinder<D,V>::reassign_isolated_phase_b(double search_radius, bool peri
     }
     std::cout << " " << std::endl;
 
-    std::unordered_map<IDType,int> group_sizes;
-    group_sizes.reserve(central_indices.size());
+    auto group_sizes = label_sizes(group_label);
     for (size_t i = 0; i < group_label.size(); ++i) {
-        IDType g = group_label[i];
-        if (g == IDType(-1)) {
-            std::cerr << "Error: galaxy " << i << " is unassigned to any group." << std::endl;
-            std::abort();
-        } else ++group_sizes[g];
-    }
-    for (size_t i = 0; i < group_label.size(); ++i) {
-        IDType g = group_label[i];
-        int sz = group_sizes[g];
+        uint32_t sz = group_sizes[(size_t)group_label[i]];
         if (sz == 1) {
             if (classification[i] == 2) {
                 std::cerr << "Error: Satellite assigned to a group of size 1 found. This should not happen." << std::endl;
@@ -1584,74 +1547,48 @@ GroupFinder<D,V>::classify(const double& search_radius, const double& scale, con
     }
 
     // Get the unique indices, which correspond to groups
-    std::vector<IDType> labels = group_label;
-    std::stable_sort(labels.begin(), labels.end());
-    labels.erase(std::unique(labels.begin(), labels.end()), labels.end());
-    for (auto &id : labels) {
-        if (id == IDType(-1)) {
-            std::cerr << "Error: Unassigned group label found in unique labels. This should not happen." << std::endl;
-            std::abort();
-        }
-    }
-    
-    // Map old (possibly now unused) labels
-    std::unordered_map<IDType,IDType> old2new;
-    old2new.reserve(labels.size());
-    for (size_t i = 0; i < labels.size(); ++i) old2new[labels[i]] = (IDType)i;
+    auto group_sizes = label_sizes(group_label);
+    const size_t n_groups = std::count_if(group_sizes.begin(), group_sizes.end(), [](uint32_t size) { return size != 0; });
 
-    // Temporary storage (may include groups that lost their central)
-    std::vector<std::vector<IDType>> tmp_groups(labels.size());
-    std::vector<IDType> tmp_centrals(labels.size(), IDType(-1));
-    std::vector<FloatType> tmp_halo_m(labels.size(), -1.0);
+    GroupsResult res;
+    res.offsets.resize(n_groups + 1, 0);
 
-    // Fill memberships
-    for (size_t loc = 0; loc < group_label.size(); ++loc) {
-        IDType old_id = group_label[loc];
-        if (old_id < 0) continue;
-        size_t g = old2new[old_id];
-        IDType global_id = groupcat_ids_sorted[loc];
-        tmp_groups[g].push_back(global_id);
-        if (classification[loc] == 0 || classification[loc] == 1) {
-            tmp_centrals[g] = global_id;
-            tmp_halo_m[g] = halo_props[loc].M_h;
-        }
-    }
-
-    // Get rid of any groups lacking a central (can happen if an isolated central was reclassified)
-    std::vector<std::vector<IDType>> group_indices;
     std::vector<IDType> central_global_indices;
     std::vector<FloatType> halo_masses_final;
+    central_global_indices.reserve(n_groups);
+    halo_masses_final.reserve(n_groups);
 
-    group_indices.reserve(tmp_groups.size());
-    central_global_indices.reserve(tmp_groups.size());
-    halo_masses_final.reserve(tmp_groups.size());
-
-    for (size_t g = 0; g < tmp_groups.size(); ++g) {
-        if (tmp_groups[g].empty()) continue;
-        if (tmp_centrals[g] == IDType(-1)) {
-            // Abort if we have a group with no surviving central
-            std::cerr << "Error: Group " << g << " has no central. This should not happen." << std::endl;
+    size_t new_label = 0;
+    for (size_t old_label = 0; old_label < group_sizes.size(); ++old_label) {
+        if (group_sizes[old_label] == 0) continue; // satellite; doesn't label a group
+        // Otherwise the next element in our offsets array has to be the local index into member_ids for the central in the next group
+        res.offsets[new_label + 1] = res.offsets[new_label] + group_sizes[old_label];
+        
+        if (classification[old_label] != 0 && classification[old_label] != 1) {
+            std::cerr << "Error: Group " << old_label << " has no central. This should not happen." << std::endl;
             std::abort();
         }
-        // Ensure central is first
-        auto &members = tmp_groups[g];
-        auto it = std::find(members.begin(), members.end(), tmp_centrals[g]);
-        if (it != members.end() && it != members.begin()) {
-            std::rotate(members.begin(), it, it + 1);
+        central_global_indices.push_back(groupcat_ids_sorted[old_label]); // groupcat central ID
+        halo_masses_final.push_back(halo_props[old_label].M_h);
+
+        // Reuse group_sizes so that it now maps from the old labels (size N) to the new group labels (size n_groups)
+        group_sizes[old_label] = static_cast<uint32_t>(new_label);
+        ++new_label;
+    }
+    
+    res.member_ids.resize(static_cast<size_t>(res.offsets.back()));
+    std::vector<IDType> write_indices = res.offsets;
+    for (size_t local = 0; local < group_label.size(); ++local) {
+        const IDType old_label = group_label[local];
+        const size_t group = group_sizes[old_label];
+        const IDType global_id = groupcat_ids_sorted[local];
+
+        if (static_cast<size_t>(old_label) == local) {
+            res.member_ids[res.offsets[group]] = global_id;
+            ++write_indices[group];
+        } else {
+            res.member_ids[write_indices[group]++] = global_id;
         }
-        group_indices.push_back(std::move(members));
-        central_global_indices.push_back(tmp_centrals[g]);
-        halo_masses_final.push_back(tmp_halo_m[g]);
-    }
-    // For faster I/O, flatten the ragged group_indices array
-    GroupsResult res;
-    res.offsets.resize(group_indices.size() + 1, 0);
-    for (size_t g = 0; g < group_indices.size(); ++g) {
-        res.offsets[g+1] = res.offsets[g] + static_cast<IDType>(group_indices[g].size());
-    }
-    res.member_ids.reserve(static_cast<size_t>(res.offsets.back()));
-    for (auto& members : group_indices) {
-        res.member_ids.insert(res.member_ids.end(), members.begin(), members.end());
     }
     std::cout << "Done preparing final group indices, central indices, and halo mass vectors." << std::endl;
     if (!checkpoint_path.empty()) {

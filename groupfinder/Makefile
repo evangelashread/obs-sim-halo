@@ -5,14 +5,20 @@ ABORIA_DIR := /path/to/Aboria/src
 # General include path to other header-only dependencies; currently confgured for macOS
 INC_DIR := /opt/homebrew/include
 
+LINUX_OS ?= 0  # make obs sim LINUX_OS=1 if Linux OS
+
 # You'll possibly have to edit these sets of flags too; currently configured for macOS
 HDF5_CXXFLAGS := -I/opt/homebrew/opt/hdf5/include
 HDF5_LDFLAGS := -L/opt/homebrew/opt/hdf5/lib -lhdf5_cpp -lhdf5
 OMP_CXXFLAGS := -I/opt/homebrew/opt/libomp/include -Xpreprocessor -fopenmp
 OMP_LDFLAGS := -L/opt/homebrew/opt/libomp/lib -lomp
 
-# Nothing here and below should ever need to be changed, except for the one OS specific flag
+# Nothing here and below should need to be changed, except for the one OS specific flag -march=armv8.5-a
 CXXFLAGS := -I$(ABORIA_DIR) -I$(INC_DIR) $(OMP_CXXFLAGS) -O3 -std=c++17 -march=armv8.5-a -Wall -Wno-missing-field-initializers -Wno-deprecated-copy -Wno-unused-parameter -Wno-type-limits -Wno-implicit-fallthrough -Wno-sign-compare
+
+ifeq ($(LINUX_OS), 1)
+    CXXFLAGS += -DUSE_MALLOC
+endif
 
 SOURCES := GroupFinderCore.cpp GroupFinderStatistics.cpp DataIO.cpp
 BUILD_DIR := build
