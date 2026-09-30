@@ -579,7 +579,7 @@ void GroupFinder<D,V>::transform(size_t central_local, size_t point_local, doubl
             std::cerr << "Error: Distances must not be of type DistObs when using the 3D/2D distance methods." << std::endl;
             std::abort();
         } else {
-            rel_dist = dist_method(mw_c,mw_s,L);
+            rel_dist = dist_method(mw_c,mw_s,L)/ (1. + z_c);
         }
         if constexpr (std::is_same_v<V,VelPeculiar3D>) {
             rel_vel = vel_method(v_c,v_s,L);
@@ -617,7 +617,8 @@ void GroupFinder<D,V>::transform(size_t central_local, size_t point_local, doubl
             std::abort();
         }
         if constexpr (std::is_same_v<D,DistObs>) {
-            rel_dist = dist_method(RA_c, Dec_c, RA_s, Dec_s, R_c);
+            const double z_conv = total_redshifts[central_local];
+            rel_dist = dist_method(RA_c, Dec_c, RA_s, Dec_s, R_c) / (1. + z_conv);
             R_c_out = R_c;
         } else {
             std::cerr << "Error: Distances must be of type DistObs when using the observational distance method." << std::endl;
@@ -742,9 +743,9 @@ void GroupFinder<D,V>::reassign_satellites(double search_radius, bool periodic, 
             IDType local_s_id = satellite_indices[s]; // index into positions_sorted
             IDType local_c_id = group_label[(size_t)local_s_id];
             if (config.tree_search) { // Returns local indices
-                double d_T = sel.R_h_group * halo_props[(size_t)local_c_id].R_h; // get the radius of the halo this satellite has been assigned to
+                double d_T = sel.R_h_group * halo_props[(size_t)local_c_id].R_h * (1. + total_redshifts[(size_t)local_c_id]); // get the radius of the halo this satellite has been assigned to
                 double search_radius_3d = 0.0;
-                double los_margin = sel.V_vir_group * halo_props[(size_t)local_c_id].V_vir * (1.0 + total_redshifts[(size_t)local_s_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_s_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
+                double los_margin = sel.V_vir_group * halo_props[(size_t)local_c_id].V_vir * (1.0 + total_redshifts[(size_t)local_c_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_c_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
                 if (!config.obs) {
                     if (config.dim == 6) {
                         search_radius_3d = d_T; // spherical in 6D
@@ -945,7 +946,7 @@ void GroupFinder<D,V>::reassign_isolated_phase_a(double search_radius, bool peri
         for (size_t c = chunk_start; c < chunk_end; ++c) {
             IDType local_c_id = group_central_indices[c];
             if (config.tree_search) {
-                double d_T = sel.R_h_iso * halo_props[(size_t)local_c_id].R_h;
+                double d_T = sel.R_h_iso * halo_props[(size_t)local_c_id].R_h * (1. + total_redshifts[(size_t)local_c_id]);
                 double search_radius_3d = 0.0;
                 double los_margin = sel.V_vir_iso * halo_props[(size_t)local_c_id].V_vir * (1.0 + total_redshifts[(size_t)local_c_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_c_id], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
                 if (!config.obs) {
@@ -1055,9 +1056,9 @@ void GroupFinder<D,V>::reassign_isolated_phase_b(double search_radius, bool peri
             IDType local_s_id = class3_indices[s]; // index into positions_sorted
             IDType local_c_id = group_label[(size_t)local_s_id];
             if (config.tree_search) { // Returns local indices
-                double d_T = sel.R_h_iso * halo_props[(size_t)local_c_id].R_h; // get the radius of the halo this satellite has been assigned to
+                double d_T = sel.R_h_iso * halo_props[(size_t)local_c_id].R_h * (1. + total_redshifts[(size_t)local_c_id]); // get the radius of the halo this satellite has been assigned to
                 double search_radius_3d = 0.0;
-                double los_margin = sel.V_vir_iso * halo_props[(size_t)local_c_id].V_vir * (1.0 + total_redshifts[(size_t)local_s_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_s_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
+                double los_margin = sel.V_vir_iso * halo_props[(size_t)local_c_id].V_vir * (1.0 + total_redshifts[(size_t)local_c_id]) / (std::sqrt(2.0) * Hubble(total_redshifts[(size_t)local_c_id], H, OMEGA_M)); // max LOS offset the velocity cut allows 
                 if (!config.obs) {
                     if (config.dim == 6) {
                         search_radius_3d = d_T; // spherical in 6D
@@ -1422,7 +1423,7 @@ GroupFinder<D,V>::classify(const double& search_radius, const double& scale, con
             // Find the candidate satellites
             std::vector<IDType> cand;
             if (config.tree_search) { // Returns local indices
-                double d_T = sel.R_h_group * halo_props[c].R_h; // max transverse distance the criterion allows
+                double d_T = sel.R_h_group * halo_props[c].R_h * (1. + total_redshifts[c]); // max transverse distance the criterion allows
                 double search_radius_3d = 0.0;
                 double los_margin = sel.V_vir_group * halo_props[c].V_vir * (1.0 + total_redshifts[c]) / (std::sqrt(2.0) * Hubble(total_redshifts[c], H, OMEGA_M)); // max LOS offset the velocity cut allows, 
                 if (!config.obs) {
